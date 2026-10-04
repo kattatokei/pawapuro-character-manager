@@ -351,8 +351,28 @@ body.compactMode .favoriteBtn{width:32px;height:32px;font-size:18px}
 <div id="modalRoot"></div>
 <div id="toast" class="toast"></div>
 <script>
-const DATA_VERSION = '4.00';
+const DATA_VERSION = '4.01';
 const CONTACT_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSepH-ZdScbl_HDJ3wXhfumMIaoATbIpUcVVgwpb831sFx24tw/viewform';
+const ANALYTICS_VIEW_NAMES = {
+  all:'all_characters', available:'available', pro:'pro_players', graduates:'graduates', favorites:'favorites',
+  about:'about', tags:'tags_sort', debutManage:'debut_order', bulkManage:'bulk_add', imageManage:'image_settings',
+  manage:'roster_manage', dataTools:'data_tools', contact:'contact'
+};
+function trackEvent(name, params={}){
+  try{
+    if(typeof window.gtag!=='function') return;
+    const safeParams={};
+    Object.entries(params||{}).forEach(([key,value])=>{
+      if(value===undefined || value===null || value==='') return;
+      if(['string','number','boolean'].includes(typeof value)) safeParams[key]=value;
+    });
+    window.gtag('event', name, safeParams);
+  }catch(e){}
+}
+function trackAppView(view){
+  const viewName=ANALYTICS_VIEW_NAMES[view];
+  if(viewName) trackEvent('app_view',{view_name:viewName});
+}
 const SEED_CHARACTERS = [];
 
 const MODES = ['サクセス','パワフェス','レジェンドバトル','栄冠ナイン'];
@@ -726,6 +746,7 @@ function goToView(nextView){
   $$('.nav button').forEach(b=>b.classList.toggle('active', b.dataset.view===currentView));
   $('#modalRoot').innerHTML='';
   renderCurrent();
+  trackAppView(currentView);
 }
 function openUnsavedNavModal(nextView){
   pendingNavView = nextView;
@@ -2128,6 +2149,7 @@ function commitExperimentPreview(){
   });
   experimentPreview=null;
   commitImmediate();
+  if(added>0) trackEvent('character_add',{method:'bulk'});
   renderCurrent();
   toast(`${added}件追加しました`);
 }
@@ -2779,8 +2801,10 @@ function openImportPreviewModal(){
 }
 function applyPendingImport(){
   if(!pendingImportData) return;
+  const importMethod=String(pendingImportData.sourceLabel||'').startsWith('ファイル') ? 'file' : 'text';
   state=normalizeState(deepClone(pendingImportData.normalized));
   pendingImportData=null;
+  trackEvent('backup_import',{method:importMethod});
   saveDraft();
   $('#modalRoot').innerHTML='';
   renderCurrent();
@@ -2829,6 +2853,7 @@ function downloadExportJson(){
   a.style.display='none';
   document.body.appendChild(a);
   a.click();
+  trackEvent('backup_export',{method:'file'});
   setTimeout(()=>{ try{a.remove();}catch(e){} URL.revokeObjectURL(url); },1500);
   const status=$('#exportJsonStatus');
   if(status) status.textContent='保存操作を実行しました。';
@@ -2848,6 +2873,7 @@ function downloadStorageErrorJson(){
   a.style.display='none';
   document.body.appendChild(a);
   a.click();
+  trackEvent('backup_export',{method:'emergency_file'});
   setTimeout(()=>{ try{a.remove();}catch(e){} URL.revokeObjectURL(url); },1500);
 }
 async function copyExportJson(){
@@ -2862,6 +2888,7 @@ async function copyExportJson(){
   }
   const status=$('#exportJsonStatus');
   if(status) status.textContent=ok ? 'JSONをクリップボードにコピーしました。' : '自動コピーできませんでした。上のJSONを全選択してコピーしてください。';
+  if(ok) trackEvent('backup_export',{method:'text_copy'});
 }
 function exportJson(){ requestAfterUnsaved('JSON書き出し', openJsonExportModal); }
 const IMAGE_UPLOAD_MAX_DIMENSION=800;
@@ -3009,7 +3036,7 @@ document.addEventListener('click', async e=>{
   if(action==='add-manual-tag'){ openTagAddModal(id || null); return; }
   if(action==='add-manual-tag-master'){ openTagAddModal(null); return; }
   if(action==='remove-tag-master'){ const v=t.dataset.value; removeManualTagValue(v); renderCurrent(); return; }
-  if(action==='run-data-integrity-check'){ runDataIntegrityCheck(); return; }
+  if(action==='run-data-integrity-check'){ trackEvent('data_integrity_check'); runDataIntegrityCheck(); return; }
   if(action==='request-data-delete'){ requestDataDelete(t.dataset.deleteType); return; }
   if(action==='confirm-data-delete'){ performDataDelete(pendingDeleteType); pendingDeleteType=null; return; }
   if(action==='cancel-data-delete'){ pendingDeleteType=null; $('#modalRoot').innerHTML=''; return; }
@@ -3020,6 +3047,7 @@ document.addEventListener('click', async e=>{
     const ok=await copyPlainText(report);
     const status=$('#contactCopyStatus');
     if(status) status.textContent=ok ? 'お問い合わせ内容をコピーしました。フォームに貼り付けて送信してください。' : 'フォームを開きます。必要に応じて内容を手動でコピーしてください。';
+    trackEvent('contact_open',{contact_type:contactCategory});
     window.open(CONTACT_FORM_URL,'_blank','noopener');
     return;
   }
@@ -3028,11 +3056,12 @@ document.addEventListener('click', async e=>{
     const status=$('#contactCopyStatus');
     copyPlainText(report).then(ok=>{
       if(status) status.textContent=ok ? 'お問い合わせ内容をコピーしました。' : '自動的にコピーできませんでした。内容を手動でコピーしてください。';
+      if(ok) trackEvent('contact_copy',{contact_type:contactCategory});
       toast(ok ? '問い合わせ内容をコピーしました' : 'コピーできませんでした');
     });
     return;
   }
-  if(action==='confirm-character-delete'){ const deleteId=t.dataset.id; state.characters=state.characters.filter(c=>c.id!==deleteId); delete state.creations[deleteId]; const saved=markDataChanged(); $('#modalRoot').innerHTML=''; renderCurrent(); toast(saved?'キャラクターを削除しました':'削除内容をブラウザ保存できませんでした'); return; }
+  if(action==='confirm-character-delete'){ const deleteId=t.dataset.id; state.characters=state.characters.filter(c=>c.id!==deleteId); delete state.creations[deleteId]; const saved=markDataChanged(); if(saved) trackEvent('character_delete'); $('#modalRoot').innerHTML=''; renderCurrent(); toast(saved?'キャラクターを削除しました':'削除内容をブラウザ保存できませんでした'); return; }
   if(action==='set-graduate-school'){ selectedGraduateSchool=t.dataset.value || ''; renderCurrent(); return; }
   if(action==='set-debut-work'){ selectedDebutWork=t.dataset.value || ''; renderCurrent(); return; }
   if(action==='toggle-filter-criterion'){
@@ -3116,7 +3145,10 @@ document.addEventListener('click', async e=>{
     }
     const added=addCharacter({name,furigana:$('#addFurigana').value.trim(),work:$('#addWork').value.trim()||'その他',group:$('#addGroup').value.trim(),imageUrl:$('#addImageUrl').value.trim(),uploadedImage,debutDate:$('#addDebutDate').value});
     if(!added) return alert('同じ作品に同名のキャラクターが登録されているか、名前が正しく入力されていません。');
-    markDataChanged(); $('#modalRoot').innerHTML=''; renderCurrent(); return;
+    markDataChanged();
+    trackEvent('character_add',{method:'single'});
+    if(uploadedImage) trackEvent('image_upload',{source:'character_add'});
+    $('#modalRoot').innerHTML=''; renderCurrent(); return;
   }
   if(e.target.id==='expPreviewSimple'){ experimentPreview={label:'名前だけ一括追加', rows:parseExperimentSimple()}; renderCurrent(); return; }
   if(e.target.id==='expPreviewCsv'){ experimentPreview={label:'CSV一括追加', rows:parseExperimentCsv()}; renderCurrent(); return; }
@@ -3173,7 +3205,7 @@ document.addEventListener('change', async e=>{
     try{
       const dataUrl=await readImageFileAsDataUrl(file);
       const c=characterById(charId);
-      if(c){ c.uploadedImage=dataUrl; commitImmediate(); renderCurrent(); toast('画像を縮小・圧縮して登録しました'); }
+      if(c){ c.uploadedImage=dataUrl; commitImmediate(); trackEvent('image_upload',{source:'image_settings'}); renderCurrent(); toast('画像を縮小・圧縮して登録しました'); }
     }catch(err){ alert(err.message || '画像ファイルを読み込めませんでした。'); }
     return;
   }
@@ -3182,7 +3214,7 @@ document.addEventListener('change', async e=>{
     try{
       const dataUrl=await readImageFileAsDataUrl(file);
       const c=characterById(id);
-      if(c){ c.uploadedImage=dataUrl; saveDraft(); rerenderCard(id); toast('画像を縮小・圧縮して登録しました'); }
+      if(c){ c.uploadedImage=dataUrl; saveDraft(); trackEvent('image_upload',{source:'character_edit'}); rerenderCard(id); toast('画像を縮小・圧縮して登録しました'); }
     }catch(err){ alert(err.message || '画像ファイルを読み込めませんでした。'); }
     return;
   }
@@ -3278,6 +3310,7 @@ document.addEventListener('dragend', ()=>{
 });
 
 renderCurrent();
+trackAppView(currentView);
 if(startupRecovery) setTimeout(openStartupRecoveryModal,0);
 </script>
 </body>
