@@ -305,7 +305,7 @@ body.compactMode .favoriteBtn{width:32px;height:32px;font-size:18px}
 <div class="app">
   <aside class="sidebar">
     <div class="logo">パワプロ　作成キャラ管理ツール</div>
-    <div class="sub">キャラクター作成・名簿管理ツール / v4.00</div>
+    <div class="sub">キャラクター作成・名簿管理ツール / v4.01</div>
     <div class="nav">
       <button class="active" data-view="all">全キャラ</button>
       <button data-view="available">作成可能</button>
@@ -323,7 +323,7 @@ body.compactMode .favoriteBtn{width:32px;height:32px;font-size:18px}
       <button data-view="contact">お問い合わせ・不具合報告</button>
     </div>
     <div class="sidebox">
-      <b>完全版 v4.00</b><br>
+      <b>完全版 v4.01</b><br>
       キャラクターの登録・育成情報の管理・バックアップなどを、左メニューからご利用いただけます。
     </div>
   </aside>
@@ -1343,7 +1343,7 @@ function renderDashboard(){
   const st=listState(); const base=baseFiltered();
   const createdNotPro = base.filter(c=>isCreated(creationFrom(st,c)) && allTagsFrom(st,c).includes('未プロ'));
   const favUncreated = base.filter(c=>creationFrom(st,c).favorite && !isCreated(creationFrom(st,c)));
-  $('#view').innerHTML = `<div class="hero"><div class="heroHead"><div><h1>パワプロ　作成キャラ管理ツール v4.00</h1><p>パワプロで作成したキャラクターを、作品・育成モード・星・ポジション・栄冠ナインの記録などとあわせて管理できます。</p></div><div class="heroActions"><button class="btn" id="openDashboardKpis">表示カード設定</button></div></div></div>${kpis()}<section class="section"><div class="sectionHead"><h2>作成済み未プロ</h2><span class="note">作成済みで、まだプロ入りしていないキャラクターを表示します。</span></div>${renderCardsSmart(createdNotPro.slice(0,12),'該当するキャラクターはありません。')}</section><section class="section"><div class="sectionHead"><h2>お気に入り未作成</h2><span class="note">お気に入りに登録されていて、まだ作成していないキャラクターを表示します。</span></div>${renderCardsSmart(favUncreated.slice(0,12),'該当するキャラクターはありません。')}</section>`;
+  $('#view').innerHTML = `<div class="hero"><div class="heroHead"><div><h1>パワプロ　作成キャラ管理ツール v4.01</h1><p>パワプロで作成したキャラクターを、作品・育成モード・星・ポジション・栄冠ナインの記録などとあわせて管理できます。</p></div><div class="heroActions"><button class="btn" id="openDashboardKpis">表示カード設定</button></div></div></div>${kpis()}<section class="section"><div class="sectionHead"><h2>作成済み未プロ</h2><span class="note">作成済みで、まだプロ入りしていないキャラクターを表示します。</span></div>${renderCardsSmart(createdNotPro.slice(0,12),'該当するキャラクターはありません。')}</section><section class="section"><div class="sectionHead"><h2>お気に入り未作成</h2><span class="note">お気に入りに登録されていて、まだ作成していないキャラクターを表示します。</span></div>${renderCardsSmart(favUncreated.slice(0,12),'該当するキャラクターはありません。')}</section>`;
 }
 function renderAll(){ const st=listState(); const base=baseFiltered(); $('#view').innerHTML=`<section class="section"><div class="sectionHead"><h2>全キャラ</h2><span class="note">${base.length}件</span></div>${renderCardsSmart(base)}</section>`; }
 function renderAvailable(){
