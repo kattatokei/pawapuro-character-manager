@@ -319,7 +319,7 @@ body.compactMode .favoriteBtn{width:32px;height:32px;font-size:18px}
 <div class="app">
   <aside class="sidebar">
     <div class="logo">パワプロ　作成キャラ管理ツール</div>
-    <div class="sub">キャラクター作成・名簿管理ツール / v4.03</div>
+    <div class="sub">キャラクター作成・名簿管理ツール / v4.04</div>
     <div class="nav">
       <button class="active" data-view="all">全キャラ</button>
       <button data-view="available">作成可能</button>
@@ -338,7 +338,7 @@ body.compactMode .favoriteBtn{width:32px;height:32px;font-size:18px}
       <button data-view="contact">お問い合わせ・不具合報告</button>
     </div>
     <div class="sidebox">
-      <b>完全版 v4.03</b><br>
+      <b>完全版 v4.04</b><br>
       キャラクターの登録・育成情報の管理・バックアップなどを、左メニューからご利用いただけます。
     </div>
   </aside>
@@ -366,7 +366,7 @@ body.compactMode .favoriteBtn{width:32px;height:32px;font-size:18px}
 <div id="modalRoot"></div>
 <div id="toast" class="toast"></div>
 <script>
-const DATA_VERSION = '4.03';
+const DATA_VERSION = '4.04';
 const CONTACT_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSepH-ZdScbl_HDJ3wXhfumMIaoATbIpUcVVgwpb831sFx24tw/viewform';
 const ANALYTICS_VIEW_NAMES = {
   all:'all_characters', available:'available', pro:'pro_players', graduates:'graduates', favorites:'favorites',
@@ -399,6 +399,7 @@ const FIREBASE_CONFIG = {
   appId: "1:1092446677351:web:148c0bb6d28f4c0f1ba7c2"
 };
 const CLOUD_LINKED_UID_KEY = 'pawapuro-character-manager-cloud-linked-uid';
+const CLOUD_LOGIN_ATTEMPT_KEY = 'pawapuro-character-manager-cloud-login-attempt';
 const LOCAL_UPDATED_AT_KEY = 'pawapuro-character-manager-complete-local-updated-at';
 const CLOUD_CHUNK_MAX_BYTES = 400000;
 let firebaseApp = null;
@@ -416,6 +417,24 @@ let cloudResyncRequested = false;
 let cloudAuthReady = false;
 
 function firebaseReady(){ return !!(firebaseApp && firebaseAuth && firebaseDb); }
+function markCloudLoginAttempt(){
+  try{ sessionStorage.setItem(CLOUD_LOGIN_ATTEMPT_KEY,String(Date.now())); }catch(e){}
+}
+function clearCloudLoginAttempt(){
+  try{ sessionStorage.removeItem(CLOUD_LOGIN_ATTEMPT_KEY); }catch(e){}
+}
+function consumeCloudLoginAttempt(){
+  try{
+    const raw=sessionStorage.getItem(CLOUD_LOGIN_ATTEMPT_KEY);
+    sessionStorage.removeItem(CLOUD_LOGIN_ATTEMPT_KEY);
+    if(!raw) return false;
+    const started=Number(raw);
+    return Number.isFinite(started) && (Date.now()-started) < 15*60*1000;
+  }catch(e){ return false; }
+}
+function trackCloudSyncError(operation){
+  trackEvent('cloud_sync_error',{operation:String(operation||'unknown')});
+}
 function cloudMetaRef(uidValue=cloudUser?.uid){ return firebaseDb.doc(`users/${uidValue}/pawapuro/meta`); }
 function cloudChunkRef(uidValue,syncId,index){ return firebaseDb.doc(`users/${uidValue}/pawapuro_chunks/${syncId}_${String(index).padStart(4,'0')}`); }
 function formatCloudTime(value){
@@ -568,9 +587,10 @@ async function applyCloudSnapshotToLocal(){
     setCloudStatus('synced');
     $('#modalRoot').innerHTML='';
     renderCurrent();
-    trackEvent('cloud_sync_load');
+    trackEvent('cloud_load');
     toast('クラウドデータを読み込みました');
   }catch(e){
+    trackCloudSyncError('load');
     console.error(e); setCloudStatus('error',String(e?.message||e)); alert('クラウドデータの読み込みに失敗しました。\n'+(e?.message||e));
   }finally{ cloudApplyingRemote=false; cloudBusy=false; }
 }
@@ -622,10 +642,11 @@ async function writeCloudSnapshot({force=false}={}){
     cloudSyncEnabled=true;
     localStorage.setItem(CLOUD_LINKED_UID_KEY,cloudUser.uid);
     setCloudStatus('synced');
-    trackEvent('cloud_sync_save',{chunks:chunks.length});
+    trackEvent('cloud_save',{chunk_count:chunks.length});
     if(oldPreviousSyncId && oldPreviousChunkCount) cleanupCloudGeneration(cloudUser.uid,oldPreviousSyncId,oldPreviousChunkCount);
     return true;
   }catch(e){
+    trackCloudSyncError('save');
     console.error(e); setCloudStatus('error',String(e?.message||e));
     toast('クラウド保存に失敗しました');
     return false;
@@ -643,26 +664,29 @@ function scheduleCloudSync(){
 }
 async function signInWithGoogle(){
   if(!firebaseReady()) return alert('Firebaseの初期化に失敗しているため、Googleログインを利用できません。');
+  markCloudLoginAttempt();
   try{
     const provider=new firebase.auth.GoogleAuthProvider();
     provider.setCustomParameters({prompt:'select_account'});
     await firebaseAuth.signInWithPopup(provider);
-    trackEvent('cloud_sign_in');
   }catch(e){
     if(e?.code==='auth/popup-blocked'){
       try{ const provider=new firebase.auth.GoogleAuthProvider(); await firebaseAuth.signInWithRedirect(provider); return; }catch(e2){ e=e2; }
     }
+    clearCloudLoginAttempt();
     if(e?.code==='auth/popup-closed-by-user' || e?.code==='auth/cancelled-popup-request') return;
+    trackCloudSyncError('login');
     console.error(e); alert('Googleログインに失敗しました。\n'+(e?.message||e));
   }
 }
 async function signOutCloud(){
   if(!firebaseAuth) return;
-  try{ await firebaseAuth.signOut(); trackEvent('cloud_sign_out'); toast('Googleアカウントからログアウトしました'); }
-  catch(e){ alert('ログアウトに失敗しました。\n'+(e?.message||e)); }
+  try{ await firebaseAuth.signOut(); trackEvent('google_logout'); toast('Googleアカウントからログアウトしました'); }
+  catch(e){ trackCloudSyncError('logout'); alert('ログアウトに失敗しました。\n'+(e?.message||e)); }
 }
 async function handleCloudAuthState(user){
   cloudAuthReady=true; cloudUser=user||null; cloudError='';
+  if(user && consumeCloudLoginAttempt()) trackEvent('google_login_success');
   if(!user){
     cloudSyncEnabled=false; cloudLastMeta=null; setCloudStatus('signed_out'); return;
   }
@@ -685,6 +709,7 @@ async function handleCloudAuthState(user){
     cloudSyncEnabled=false; setCloudStatus('needs_choice');
     setTimeout(()=>openCloudConflictModal(meta),0);
   }catch(e){
+    trackCloudSyncError('auth_check');
     console.error(e); cloudSyncEnabled=false; setCloudStatus('error',String(e?.message||e));
   }
 }
@@ -694,7 +719,7 @@ function initFirebaseCloud(){
     firebaseApp=firebase.apps?.length ? firebase.app() : firebase.initializeApp(FIREBASE_CONFIG);
     firebaseAuth=firebase.auth(); firebaseDb=firebase.firestore();
     firebaseAuth.onAuthStateChanged(handleCloudAuthState);
-  }catch(e){ console.error(e); cloudError=String(e?.message||e); cloudStatus='error'; cloudAuthReady=true; }
+  }catch(e){ trackCloudSyncError('init'); console.error(e); cloudError=String(e?.message||e); cloudStatus='error'; cloudAuthReady=true; }
 }
 const SEED_CHARACTERS = [];
 
@@ -1668,7 +1693,7 @@ function renderDashboard(){
   const st=listState(); const base=baseFiltered();
   const createdNotPro = base.filter(c=>isCreated(creationFrom(st,c)) && allTagsFrom(st,c).includes('未プロ'));
   const favUncreated = base.filter(c=>creationFrom(st,c).favorite && !isCreated(creationFrom(st,c)));
-  $('#view').innerHTML = `<div class="hero"><div class="heroHead"><div><h1>パワプロ　作成キャラ管理ツール v4.03</h1><p>パワプロで作成したキャラクターを、作品・育成モード・星・ポジション・栄冠ナインの記録などとあわせて管理できます。</p></div><div class="heroActions"><button class="btn" id="openDashboardKpis">表示カード設定</button></div></div></div>${kpis()}<section class="section"><div class="sectionHead"><h2>作成済み未プロ</h2><span class="note">作成済みで、まだプロ入りしていないキャラクターを表示します。</span></div>${renderCardsSmart(createdNotPro.slice(0,12),'該当するキャラクターはありません。')}</section><section class="section"><div class="sectionHead"><h2>お気に入り未作成</h2><span class="note">お気に入りに登録されていて、まだ作成していないキャラクターを表示します。</span></div>${renderCardsSmart(favUncreated.slice(0,12),'該当するキャラクターはありません。')}</section>`;
+  $('#view').innerHTML = `<div class="hero"><div class="heroHead"><div><h1>パワプロ　作成キャラ管理ツール v4.04</h1><p>パワプロで作成したキャラクターを、作品・育成モード・星・ポジション・栄冠ナインの記録などとあわせて管理できます。</p></div><div class="heroActions"><button class="btn" id="openDashboardKpis">表示カード設定</button></div></div></div>${kpis()}<section class="section"><div class="sectionHead"><h2>作成済み未プロ</h2><span class="note">作成済みで、まだプロ入りしていないキャラクターを表示します。</span></div>${renderCardsSmart(createdNotPro.slice(0,12),'該当するキャラクターはありません。')}</section><section class="section"><div class="sectionHead"><h2>お気に入り未作成</h2><span class="note">お気に入りに登録されていて、まだ作成していないキャラクターを表示します。</span></div>${renderCardsSmart(favUncreated.slice(0,12),'該当するキャラクターはありません。')}</section>`;
 }
 function renderAll(){ const st=listState(); const base=baseFiltered(); $('#view').innerHTML=`<section class="section"><div class="sectionHead"><h2>全キャラ</h2><span class="note">${base.length}件</span></div>${renderCardsSmart(base)}</section>`; }
 function renderAvailable(){
@@ -2748,7 +2773,7 @@ function renderAbout(){
       <div class="aboutCard"><h3>主な機能</h3><p>キャラクターの個別登録・一括追加、作成状況の管理、プロ選手一覧・卒業生名簿、お気に入り、タグ・ソート設定、画像設定、JSONによるバックアップと復元などをご利用いただけます。</p></div>
       <div class="aboutCard"><h3>データの保存について</h3><p>登録したキャラクター情報や育成データは、ログインしない場合はご利用中のブラウザ内に保存されます。「Googleアカウント・同期」からログインして同期を有効にすると、同じGoogleアカウントを使う別端末でもクラウドデータを読み込めます。</p></div>
       <div class="aboutCard"><h3>バックアップについて</h3><p>ブラウザのサイトデータを削除した場合などに備えて、「データ削除・保存・復元」からJSONバックアップを作成できます。別の端末へデータを移す場合にも、JSONの書き出し・読み込みをご利用ください。</p></div>
-      <div class="aboutCard"><h3>プライバシーについて</h3><p>登録したキャラクター情報、育成データ、アップロード画像などは、通常はご利用中のブラウザ内に保存されます。Googleアカウント同期を有効にした場合は、Firebase Authenticationでログインを行い、同期対象データをGoogle Cloud Firestoreへ保存します。クラウドデータはログインしたGoogleアカウントの認証UIDに紐づけて管理します。JSONバックアップとして書き出したデータは、利用者ご自身で管理してください。本サイトでは、利用状況の把握やサービス改善のためGoogle Analyticsを利用しており、ページの閲覧状況、利用端末・ブラウザ等のアクセス解析情報がGoogleへ送信されることがあります。</p></div>
+      <div class="aboutCard"><h3>プライバシーについて</h3><p>登録したキャラクター情報、育成データ、アップロード画像などは、通常はご利用中のブラウザ内に保存されます。Googleアカウント同期を有効にした場合は、Firebase Authenticationでログインを行い、同期対象データをGoogle Cloud Firestoreへ保存します。クラウドデータはログインしたGoogleアカウントの認証UIDに紐づけて管理します。JSONバックアップとして書き出したデータは、利用者ご自身で管理してください。本サイトでは、利用状況の把握やサービス改善のためGoogle Analyticsを利用しており、ページの閲覧状況、利用端末・ブラウザ等のアクセス解析情報に加え、キャラ追加・バックアップ・Googleログイン・クラウド同期など一部機能の利用状況がGoogleへ送信されることがあります。これらの操作イベントには、キャラクター名、Googleアカウント名、メールアドレス、登録内容そのものは含めません。</p></div>
       <div class="aboutCard"><h3>非公式ツールについて</h3><p>本サイトは個人制作の非公式ツールです。株式会社コナミデジタルエンタテインメントおよび各作品・キャラクターの権利者とは関係ありません。各名称・画像等の権利は、それぞれの権利者に帰属します。</p></div>
       <div class="aboutCard"><h3>お問い合わせ</h3><p>不具合のご報告、改善のご要望、その他のお問い合わせは「お問い合わせ・不具合報告」メニューからお知らせください。</p><div class="inline" style="margin-top:12px"><button class="btn primary" data-action="open-contact-from-about">お問い合わせ・不具合報告を開く</button></div></div>
     </div>
