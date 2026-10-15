@@ -336,7 +336,7 @@ body.compactMode .favoriteBtn{width:32px;height:32px;font-size:18px}
 <div class="app">
   <aside class="sidebar">
     <div class="logo">パワプロ　作成キャラ管理ツール</div>
-    <div class="sub">キャラクター作成・名簿管理ツール / v4.09</div>
+    <div class="sub">キャラクター作成・名簿管理ツール / v4.11</div>
     <div class="nav">
       <button class="active" data-view="all">全キャラ</button>
       <button data-view="available">作成可能</button>
@@ -355,7 +355,7 @@ body.compactMode .favoriteBtn{width:32px;height:32px;font-size:18px}
       <button data-view="contact">お問い合わせ・不具合報告</button>
     </div>
     <div class="sidebox">
-      <b>完全版 v4.09</b><br>
+      <b>完全版 v4.11</b><br>
       キャラクターの登録・育成情報の管理・バックアップなどを、左メニューからご利用いただけます。
     </div>
   </aside>
@@ -383,7 +383,7 @@ body.compactMode .favoriteBtn{width:32px;height:32px;font-size:18px}
 <div id="modalRoot"></div>
 <div id="toast" class="toast"></div>
 <script>
-const DATA_VERSION = '4.09';
+const DATA_VERSION = '4.11';
 const CONTACT_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSepH-ZdScbl_HDJ3wXhfumMIaoATbIpUcVVgwpb831sFx24tw/viewform';
 const ANALYTICS_VIEW_NAMES = {
   all:'all_characters', available:'available', pro:'pro_players', graduates:'graduates', favorites:'favorites',
@@ -779,6 +779,7 @@ const DEFAULT_SETTINGS = {
     position:['投手','捕手','一塁手','二塁手','遊撃手','三塁手','外野手','ポジションなし'],
     mode:['サクセス','パワフェス','レジェンドバトル','栄冠ナイン','未作成']
   },
+  groupPriority:{},
   debutPriority:{}
 };
 let startupRecovery = null;
@@ -792,6 +793,7 @@ let openEditors = new Set();
 let pendingTagTargetId = null;
 let selectedGraduateSchool = null;
 let selectedDebutWork = null;
+let selectedGroupPriorityWork = null;
 let contactCategory = '不具合報告';
 let pendingNavView = null;
 let pendingSafeAction = null;
@@ -898,9 +900,10 @@ function normalizeState(s){
   // 旧版の未使用設定「workSortMode」は読み込み時に破棄する。
   delete settings.workSortMode;
   settings.sortPriority = Object.assign({}, DEFAULT_SETTINGS.sortPriority, settings.sortPriority || {});
-  settings.sortPriority.work = Array.isArray(settings.sortPriority.work) ? settings.sortPriority.work : [...DEFAULT_SETTINGS.sortPriority.work];
+  settings.sortPriority.work = Array.isArray(settings.sortPriority.work) ? [...new Set(settings.sortPriority.work.map(w=>w==='学マス'?'学園アイドルマスター':w))] : [...DEFAULT_SETTINGS.sortPriority.work];
   settings.sortPriority.position = Array.isArray(settings.sortPriority.position) ? settings.sortPriority.position : [...DEFAULT_SETTINGS.sortPriority.position];
   settings.sortPriority.mode = Array.isArray(settings.sortPriority.mode) ? settings.sortPriority.mode : [...DEFAULT_SETTINGS.sortPriority.mode];
+  settings.groupPriority = settings.groupPriority && typeof settings.groupPriority==='object' && !Array.isArray(settings.groupPriority) ? settings.groupPriority : {};
   settings.debutPriority = settings.debutPriority && typeof settings.debutPriority==='object' ? settings.debutPriority : {};
   const creations = s.creations && typeof s.creations === 'object' ? s.creations : {};
   chars.forEach(c=>{
@@ -910,10 +913,20 @@ function normalizeState(s){
     c.furigana ??= ''; c.group ??= ''; c.imageUrl ??= ''; c.uploadedImage ??= ''; c.debutDate ??= ''; c.sortOrder ??= ''; c.profileUrl ??= ''; c.imageDisplay = normalizeImageDisplay(c.imageDisplay);
     delete c.sortOverride;
     if(c.work==='学マス') c.work='学園アイドルマスター';
-    if(c.work==='学園アイドルマスター' && (!c.group || c.group==='学園アイドルマスター')) c.group='学マス';
+    // 旧版で自動付与されていた「学マス」等は作品内グループとして扱わず空欄へ戻す。
+    if(c.work==='学園アイドルマスター' && (c.group==='学マス' || c.group==='学園アイドルマスター')) c.group='';
     const rawCreation = creations[c.id] || {};
     creations[c.id] = normalizeCreation(rawCreation);
   });
+  // 作品内グループ順は作品ごとに保持する。現在存在するグループだけを残し、新規グループは表示時に末尾へ補完する。
+  const normalizedGroupPriority={};
+  Object.entries(settings.groupPriority || {}).forEach(([rawWork,rawList])=>{
+    const work=rawWork==='学マス' ? '学園アイドルマスター' : rawWork;
+    if(!Array.isArray(rawList)) return;
+    const validGroups=new Set(chars.filter(c=>workDisplay(c)===work).map(c=>String(c.group||'').trim()).filter(g=>g && g!==work && g!=='学マス'));
+    normalizedGroupPriority[work]=[...new Set(rawList.map(String).filter(g=>validGroups.has(g)))];
+  });
+  settings.groupPriority=normalizedGroupPriority;
   return {dataVersion: DATA_VERSION, characters:chars, creations, settings};
 }
 function blankCreation(){return {mode:'', eikanRecords:[], mainPosition:'', subPositions:[], pitchingRoles:[], stars:'', favorite:false, manualTags:[], memo:''};}
@@ -1168,14 +1181,35 @@ async function copyPlainText(text){
   ta.remove(); return ok;
 }
 function workDisplay(c){ return c.work==='学マス' ? '学園アイドルマスター' : (c.work || 'その他'); }
-function workTag(c){ const w=workDisplay(c); if(w==='学園アイドルマスター') return '学マス'; return w; }
-function groupTag(c){ const g=String(c.group || '').trim(); const w=workDisplay(c), wt=workTag(c); if(!g || g===w || g===wt) return ''; return g; }
+function workTag(c){ return workDisplay(c); }
+function groupTag(c){ const g=String(c.group || '').trim(); const w=workDisplay(c); if(!g || g===w || (w==='学園アイドルマスター' && g==='学マス')) return ''; return g; }
 function works(st=listState()){ return [...new Set(st.characters.map(c=>workDisplay(c)))].sort((a,b)=>a.localeCompare(b,'ja')); }
 function workTags(st=listState()){ return [...new Set(st.characters.map(c=>workTag(c)))].filter(Boolean).sort((a,b)=>priorityCompare('work',a,b,st) || a.localeCompare(b,'ja')); }
 function groupTags(st=listState()){ return [...new Set(st.characters.map(c=>groupTag(c)))].filter(Boolean).sort((a,b)=>a.localeCompare(b,'ja')); }
 function priorityList(type, st=listState()){ const base = (st.settings.sortPriority && st.settings.sortPriority[type]) || []; return Array.isArray(base) ? base : []; }
 function priorityIndex(type, value, st=listState()){ const list=priorityList(type,st); const i=list.indexOf(value); return i>=0 ? i : 99999; }
 function priorityCompare(type, a, b, st=listState()){ const ia=priorityIndex(type,a,st), ib=priorityIndex(type,b,st); if(ia!==ib) return ia-ib; return 0; }
+function groupsForWork(work, st=listState()){
+  return [...new Set(st.characters.filter(c=>workDisplay(c)===work).map(c=>groupTag(c)).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ja'));
+}
+function groupPriorityItems(work, st=listState()){
+  const base=groupsForWork(work,st);
+  const saved=(st.settings.groupPriority && Array.isArray(st.settings.groupPriority[work])) ? st.settings.groupPriority[work].filter(g=>base.includes(g)) : [];
+  return [...new Set([...saved,...base.filter(g=>!saved.includes(g))])];
+}
+function compareGroupsWithinWork(a,b,st=listState()){
+  const workA=workDisplay(a), workB=workDisplay(b);
+  if(workA!==workB) return 0;
+  const ga=groupTag(a), gb=groupTag(b);
+  if(ga===gb) return 0;
+  // グループ未設定は、その作品内で常に最後。
+  if(!ga) return 1;
+  if(!gb) return -1;
+  const order=groupPriorityItems(workA,st);
+  const ia=order.indexOf(ga), ib=order.indexOf(gb);
+  if(ia!==ib) return (ia<0?99999:ia)-(ib<0?99999:ib);
+  return comparePrimitive(ga,gb);
+}
 function isCreated(cr){ return !!cr.mode; }
 function isPro(cr){ if(!cr.mode) return false; if(cr.mode !== '栄冠ナイン') return true; const last=finalEikanRecord(cr); return !!last && last.proStatus === 'プロ'; }
 function visibleStar(cr){ if(!cr.mode) return 0; const n=Number(cr.stars); return Number.isFinite(n) && cr.stars!=='' ? Math.max(0,Math.min(999,Math.floor(n))) : 0; }
@@ -1345,8 +1379,10 @@ function compareSortCriterion(a,b,key,st=listState()){
     case '星順':
       // このサイトでは「星順の昇順」= 星が大きい順。
       return visibleStar(cb)-visibleStar(ca);
-    case '作品順':
-      return priorityCompare('work',workTag(a),workTag(b),st) || comparePrimitive(workTag(a), workTag(b));
+    case '作品順': {
+      const workCmp=priorityCompare('work',workTag(a),workTag(b),st) || comparePrimitive(workTag(a), workTag(b));
+      return workCmp || compareGroupsWithinWork(a,b,st);
+    }
     case 'デビュー順':
       return compareDebut(a,b,st);
     case '五十音順':
@@ -1747,7 +1783,7 @@ function renderDashboard(){
   const st=listState(); const base=baseFiltered();
   const createdNotPro = base.filter(c=>isCreated(creationFrom(st,c)) && allTagsFrom(st,c).includes('未プロ'));
   const favUncreated = base.filter(c=>creationFrom(st,c).favorite && !isCreated(creationFrom(st,c)));
-  $('#view').innerHTML = `<div class="hero"><div class="heroHead"><div><h1>パワプロ　作成キャラ管理ツール v4.09</h1><p>パワプロで作成したキャラクターを、作品・育成モード・星・ポジション・栄冠ナインの記録などとあわせて管理できます。</p></div><div class="heroActions"><button class="btn" id="openDashboardKpis">表示カード設定</button></div></div></div>${kpis()}<section class="section"><div class="sectionHead"><h2>作成済み未プロ</h2><span class="note">作成済みで、まだプロ入りしていないキャラクターを表示します。</span></div>${renderCardsSmart(createdNotPro.slice(0,12),'該当するキャラクターはありません。')}</section><section class="section"><div class="sectionHead"><h2>お気に入り未作成</h2><span class="note">お気に入りに登録されていて、まだ作成していないキャラクターを表示します。</span></div>${renderCardsSmart(favUncreated.slice(0,12),'該当するキャラクターはありません。')}</section>`;
+  $('#view').innerHTML = `<div class="hero"><div class="heroHead"><div><h1>パワプロ　作成キャラ管理ツール v4.11</h1><p>パワプロで作成したキャラクターを、作品・育成モード・星・ポジション・栄冠ナインの記録などとあわせて管理できます。</p></div><div class="heroActions"><button class="btn" id="openDashboardKpis">表示カード設定</button></div></div></div>${kpis()}<section class="section"><div class="sectionHead"><h2>作成済み未プロ</h2><span class="note">作成済みで、まだプロ入りしていないキャラクターを表示します。</span></div>${renderCardsSmart(createdNotPro.slice(0,12),'該当するキャラクターはありません。')}</section><section class="section"><div class="sectionHead"><h2>お気に入り未作成</h2><span class="note">お気に入りに登録されていて、まだ作成していないキャラクターを表示します。</span></div>${renderCardsSmart(favUncreated.slice(0,12),'該当するキャラクターはありません。')}</section>`;
 }
 function renderAll(){ const st=listState(); const base=baseFiltered(); $('#view').innerHTML=`<section class="section"><div class="sectionHead"><h2>全キャラ</h2><span class="note">${base.length}件</span></div>${renderCardsSmart(base)}</section>`; }
 function renderAvailable(){
@@ -1887,13 +1923,32 @@ function setPriorityOrder(type, fromIndex, toIndex){
   state.settings.sortPriority[type]=items;
   markDataChanged(); renderCurrent();
 }
+function setGroupPriorityOrder(work, fromIndex, toIndex){
+  const items=groupPriorityItems(work,state);
+  if(fromIndex===toIndex || fromIndex<0 || toIndex<0 || fromIndex>=items.length || toIndex>=items.length) return;
+  const [moved]=items.splice(fromIndex,1);
+  items.splice(toIndex,0,moved);
+  if(!state.settings.groupPriority || typeof state.settings.groupPriority!=='object') state.settings.groupPriority={};
+  state.settings.groupPriority[work]=items;
+  markDataChanged(); renderCurrent();
+}
+function groupPriorityPanel(){
+  const ws=works(state);
+  if(!selectedGroupPriorityWork || !ws.includes(selectedGroupPriorityWork)) selectedGroupPriorityWork=ws[0] || '';
+  const items=selectedGroupPriorityWork ? groupPriorityItems(selectedGroupPriorityWork,state) : [];
+  const workButtons=ws.map(w=>`<button class="pillBtn ${w===selectedGroupPriorityWork?'selected':''}" data-action="set-group-priority-work" data-value="${escapeHtml(w)}">${escapeHtml(w)}</button>`).join('') || '<span class="note">登録されている作品はありません。</span>';
+  const list=items.length
+    ? `<div class="priorityList" data-drag-list="groupPriority" data-work="${escapeHtml(selectedGroupPriorityWork)}">${items.map((item,i)=>`<div class="priorityRow" draggable="true" data-drag-kind="groupPriority" data-work="${escapeHtml(selectedGroupPriorityWork)}" data-index="${i}"><span class="dragHandle">☰</span><span class="priorityName">${escapeHtml(item)}</span></div>`).join('')}</div>`
+    : '<div class="empty">この作品には作品内グループが登録されていません。</div>';
+  return `<div class="detailPanel"><div class="sectionHead"><h2>作品内グループ順</h2><span class="note">作品ごとに、グループの並び順を設定できます。</span></div><div class="label">作品選択</div><div class="workSelectPanel">${workButtons}</div><div class="separator"></div><div class="label">${escapeHtml(selectedGroupPriorityWork || '作品未選択')} のグループ順</div><div class="hint">左側の三本線をドラッグすると順番を変更できます。グループ未設定のキャラクターは常に最後に並びます。</div>${list}</div>`;
+}
 function renderTags(){
   const tags=state.settings.manualTags || [];
-  let html=`<section class="section"><div class="sectionHead"><h2>タグ・ソート設定</h2><span class="note">手動タグの管理と、カテゴリごとのソート優先度を設定できます。</span></div><div class="detailPanel"><div class="label">手動タグ一覧</div>`;
+  let html=`<section class="section"><div class="sectionHead"><h2>タグ・ソート設定</h2><span class="note">手動タグの管理と、作品・作品内グループなどのソート優先度を設定できます。</span></div><div class="detailPanel"><div class="label">手動タグ一覧</div>`;
   if(!tags.length) html += `<div class="empty">手動タグは登録されていません。</div>`;
   else html += `<div class="tagManageList">${tags.map((t,i)=>`<div class="tagManageRow"><input data-action="edit-manual-tag-master" data-index="${i}" value="${escapeHtml(t)}"><button class="btn danger small" data-action="remove-tag-master" data-value="${escapeHtml(t)}">×</button></div>`).join('')}</div>`;
   html += `<div class="separator"></div><button class="btn primary" data-action="add-manual-tag-master">＋タグ追加</button><p class="hint">こちらでは手動タグのみ編集・削除できます。お気に入りは、各カード右上の星ボタンから設定してください。</p></div>`;
-  html += `<div class="detailPanel"><div class="sectionHead"><h2>ソート優先度</h2><span class="note">作品順・ポジション順・モード順の優先度をドラッグ操作で変更できます。</span></div><div class="priorityManage">${priorityBox('work','作品順の優先度')}${priorityBox('position','ポジション順の優先度')}${priorityBox('mode','モード順の優先度')}</div></div></section>`;
+  html += `<div class="detailPanel"><div class="sectionHead"><h2>ソート優先度</h2><span class="note">作品順・ポジション順・モード順の優先度をドラッグ操作で変更できます。</span></div><div class="priorityManage">${priorityBox('work','作品順の優先度')}${priorityBox('position','ポジション順の優先度')}${priorityBox('mode','モード順の優先度')}</div></div>${groupPriorityPanel()}</section>`;
   $('#view').innerHTML=html;
 }
 function debutOrderedCharsFor(work, st=state){
@@ -2419,6 +2474,15 @@ function runDataIntegrityCheck(){
     });
   }
 
+  if(settings.groupPriority && typeof settings.groupPriority==='object'){
+    Object.entries(settings.groupPriority).forEach(([work,list])=>{
+      if(!Array.isArray(list)){ issues.push(dataIntegrityIssue('error','作品内グループ順',`${work} のグループ順データが配列ではありません`,'')); return; }
+      if(new Set(list).size!==list.length) issues.push(dataIntegrityIssue('warning','作品内グループ順',`${work} のグループ順に重複があります`,''));
+      const valid=new Set(chars.filter(c=>workDisplay(c)===work).map(c=>groupTag(c)).filter(Boolean));
+      list.forEach(group=>{ if(!valid.has(group)) issues.push(dataIntegrityIssue('warning','作品内グループ順',`${work} のグループ順に現在使われていないグループがあります`,group)); });
+    });
+  }
+
   try{
     const json=JSON.stringify(state);
     const restored=normalizeState(JSON.parse(json));
@@ -2486,7 +2550,7 @@ const DELETE_ACTIONS = {
   manualTags:{title:'手動タグを全削除', body:'手動タグの一覧と、各キャラクターに設定した手動タグをすべて削除します。自動的に付与されるタグは削除対象ではありません。', actionLabel:'削除する'},
   debut:{title:'デビュー順設定を初期化', body:'「デビュー順設定」で変更した作品内の並び順を初期化します。キャラクターのデビュー日や名簿データは保持されます。', actionLabel:'初期化する'},
   uploadedImages:{title:'アップロード画像を全削除', body:'端末からアップロードした画像データのみを削除します。登録済みの画像URLは保持されます。', actionLabel:'削除する'},
-  sortPriority:{title:'ソート優先度を初期化', body:'「タグ・ソート設定」で変更した作品・ポジション・モードの優先度を初期状態に戻します。', actionLabel:'初期化する'},
+  sortPriority:{title:'ソート優先度を初期化', body:'「タグ・ソート設定」で変更した作品・作品内グループ・ポジション・モードの優先度を初期状態に戻します。', actionLabel:'初期化する'},
   full:{title:'全データ初期化', body:'保存されているすべてのデータを初期状態に戻します。追加したキャラクター、作成情報、タグ、学校、アップロード画像などは削除されます。', actionLabel:'全データを初期化'}
 };
 
@@ -2623,6 +2687,7 @@ function performDataDelete(type){
     state.characters.forEach(c=>{ if(c.uploadedImage){ c.uploadedImage=''; resetImageDisplay(c); } });
   }else if(type==='sortPriority'){
     state.settings.sortPriority=deepClone(DEFAULT_SETTINGS.sortPriority);
+    state.settings.groupPriority={};
   }else if(type==='full'){
     state=normalizeState({characters:deepClone(SEED_CHARACTERS),creations:{},settings:deepClone(DEFAULT_SETTINGS)});
   }
@@ -2866,7 +2931,7 @@ function renderAbout(){
   $('#view').innerHTML=`<section class="section"><div class="sectionHead"><h2>このサイトについて</h2><span class="note">「パワプロ　作成キャラ管理ツール」の概要と、データの取り扱いについてご案内します。</span></div>
     <div class="aboutGrid">
       <div class="aboutCard"><h3>このサイトについて</h3><p>「パワプロ　作成キャラ管理ツール」は、パワプロで作成するキャラクターの名簿や育成状況を整理・管理するための非公式Webツールです。キャラクターの登録、作成モード・星・ポジション・栄冠ナインの記録、画像、タグなどをまとめて管理できます。</p></div>
-      <div class="aboutCard"><h3>主な機能</h3><p>キャラクターの個別登録・一括追加、作成状況の管理、プロ選手一覧・卒業生名簿、お気に入り、タグ・ソート設定、画像設定（表示位置・倍率の個別調整を含む）、JSONによるバックアップと復元などをご利用いただけます。</p></div>
+      <div class="aboutCard"><h3>主な機能</h3><p>キャラクターの個別登録・一括追加、作成状況の管理、プロ選手一覧・卒業生名簿、お気に入り、タグ・ソート設定（作品内グループ順を含む）、画像設定（表示位置・倍率の個別調整を含む）、JSONによるバックアップと復元などをご利用いただけます。</p></div>
       <div class="aboutCard"><h3>データの保存について</h3><p>登録したキャラクター情報や育成データは、ログインしない場合はご利用中のブラウザ内に保存されます。「Googleアカウント・同期」からログインして同期を有効にすると、同じGoogleアカウントを使う別端末でもクラウドデータを読み込めます。</p></div>
       <div class="aboutCard"><h3>バックアップについて</h3><p>ブラウザのサイトデータを削除した場合などに備えて、「データ削除・保存・復元」からJSONバックアップを作成できます。別の端末へデータを移す場合にも、JSONの書き出し・読み込みをご利用ください。</p></div>
       <div class="aboutCard"><h3>プライバシーについて</h3><p>登録したキャラクター情報、育成データ、アップロード画像などは、通常はご利用中のブラウザ内に保存されます。Googleアカウント同期を有効にした場合は、Firebase Authenticationでログインを行い、同期対象データをGoogle Cloud Firestoreへ保存します。クラウドデータはログインしたGoogleアカウントの認証UIDに紐づけて管理します。JSONバックアップとして書き出したデータは、利用者ご自身で管理してください。本サイトでは、利用状況の把握やサービス改善のためGoogle Analyticsを利用しており、ページの閲覧状況、利用端末・ブラウザ等のアクセス解析情報に加え、キャラ追加・バックアップ・Googleログイン・クラウド同期など一部機能の利用状況がGoogleへ送信されることがあります。これらの操作イベントには、キャラクター名、Googleアカウント名、メールアドレス、登録内容そのものは含めません。</p></div>
@@ -3590,6 +3655,7 @@ document.addEventListener('click', async e=>{
   if(action==='confirm-character-delete'){ const deleteId=t.dataset.id; state.characters=state.characters.filter(c=>c.id!==deleteId); delete state.creations[deleteId]; const saved=markDataChanged(); if(saved) trackEvent('character_delete'); $('#modalRoot').innerHTML=''; renderCurrent(); toast(saved?'キャラクターを削除しました':'削除内容をブラウザ保存できませんでした'); return; }
   if(action==='set-graduate-school'){ selectedGraduateSchool=t.dataset.value || ''; renderCurrent(); return; }
   if(action==='set-debut-work'){ selectedDebutWork=t.dataset.value || ''; renderCurrent(); return; }
+  if(action==='set-group-priority-work'){ selectedGroupPriorityWork=t.dataset.value || ''; renderCurrent(); return; }
   if(action==='toggle-filter-criterion'){
     const pref=viewPref(); const v=t.dataset.value; const decoded=decodeCriterion(v); const kind=decoded.kind; const arr=pref.filters; const i=arr.indexOf(v);
     if(kind==='pitchingRole' && hasPitcherFilter(pref)){
@@ -3694,6 +3760,13 @@ document.addEventListener('click', async e=>{
   if(e.target.id==='imageExpCommit'){ commitImageExperiment(); return; }
   if(e.target.id==='imageCheckStart'){ startImageUrlCheck(); return; }
   if(e.target.id==='imageCheckCopyPrompt'){ copyImageUrlIssuePrompt(); return; }
+});
+document.addEventListener('focusin', e=>{
+  const t=e.target;
+  if(currentView!=='manage' || !t.matches('input[data-cfield]') || t.type==='date') return;
+  requestAnimationFrame(()=>{
+    try{ t.select(); }catch(_){}
+  });
 });
 document.addEventListener('input', e=>{
   const t=e.target; const cardEl=t.closest('[data-id]'); const id=cardEl?.dataset.id;
@@ -3852,6 +3925,7 @@ function moveByInsertIndex(kind, payload, insertIndex){
   if(fromIndex < toIndex) toIndex -= 1;
   if(toIndex===fromIndex) return;
   if(kind==='priority') setPriorityOrder(payload.type, fromIndex, toIndex);
+  if(kind==='groupPriority') setGroupPriorityOrder(payload.work, fromIndex, toIndex);
   if(kind==='debut') setDebutOrder(payload.work, fromIndex, toIndex);
   if(kind==='dashboardKpi') setDashboardKpiOrder(fromIndex, toIndex);
 }
