@@ -154,7 +154,11 @@ h2{font-size:21px;margin:0}
 .filterTools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0 14px}
 .filterSections{display:grid;gap:14px}
 .filterGroup{background:#fffaf3;border:1px solid var(--line);border-radius:18px;padding:13px}
-.filterGroupTitle{font-size:14px;font-weight:900;margin-bottom:9px}
+.filterGroupHead{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:9px}
+.filterGroupTitle{font-size:14px;font-weight:900}
+.filterGroupActions{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.filterGroupLogic{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 10px}
+.filterGroupLogic .label{margin:0}
 .filterChips{display:flex;gap:8px;flex-wrap:wrap}
 .filterChip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:8px 11px;cursor:pointer;font-size:12px}
 .filterChip.selected{background:var(--accent);border-color:var(--accent);color:#fff}
@@ -165,8 +169,9 @@ h2{font-size:21px;margin:0}
 .sortBadge{font-size:12px;color:var(--muted);background:#fff;border:1px solid var(--line);border-radius:999px;padding:5px 9px}
 
 .tagManageList{display:grid;gap:10px;margin-top:12px;max-width:560px}
-.tagManageRow{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:14px;padding:9px}
-.tagManageRow input{width:100%}
+.tagManageRow{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:14px;padding:9px}
+.tagManageRow .dragHandle{cursor:grab}
+.tagManageRow input{width:100%;min-width:0}
 .schoolManageRow{grid-template-columns:auto minmax(0,1fr) auto;cursor:default}
 .schoolManageRow .dragHandle{cursor:grab}
 .schoolManageRow input{width:100%;min-width:0}
@@ -339,7 +344,7 @@ body.compactMode .favoriteBtn{width:32px;height:32px;font-size:18px}
 <div class="app">
   <aside class="sidebar">
     <div class="logo">パワプロ　作成キャラ管理ツール</div>
-    <div class="sub">キャラクター作成・名簿管理ツール / v4.12</div>
+    <div class="sub">キャラクター作成・名簿管理ツール / v4.14</div>
     <div class="nav">
       <button class="active" data-view="all">全キャラ</button>
       <button data-view="available">作成可能</button>
@@ -358,7 +363,7 @@ body.compactMode .favoriteBtn{width:32px;height:32px;font-size:18px}
       <button data-view="contact">お問い合わせ・不具合報告</button>
     </div>
     <div class="sidebox">
-      <b>完全版 v4.12</b><br>
+      <b>完全版 v4.14</b><br>
       キャラクターの登録・育成情報の管理・バックアップなどを、左メニューからご利用いただけます。
     </div>
   </aside>
@@ -386,7 +391,7 @@ body.compactMode .favoriteBtn{width:32px;height:32px;font-size:18px}
 <div id="modalRoot"></div>
 <div id="toast" class="toast"></div>
 <script>
-const DATA_VERSION = '4.12';
+const DATA_VERSION = '4.14';
 const CONTACT_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSepH-ZdScbl_HDJ3wXhfumMIaoATbIpUcVVgwpb831sFx24tw/viewform';
 const ANALYTICS_VIEW_NAMES = {
   all:'all_characters', available:'available', pro:'pro_players', graduates:'graduates', favorites:'favorites',
@@ -767,7 +772,7 @@ const SORT_COMPARE_SCHEMAS = {
 };
 const SORT_FALLBACK_ORDER = ['星順','作品順','デビュー順','五十音順','ポジション順','モード順'];
 const GROUPABLE_SORTS = new Set(['作品順','ポジション順','モード順']);
-const DEFAULT_VIEW_PREF = {search:'', sortKey:'五十音順', sortDir:'asc', filterMode:'AND', positionFilterMode:'OR', fielderPositionFilterMode:'OR', pitchingFilterMode:'OR', filters:[]};
+const DEFAULT_VIEW_PREF = {search:'', sortKey:'五十音順', sortDir:'asc', filterMode:'AND', manualTagFilterMode:'OR', positionFilterMode:'OR', fielderPositionFilterMode:'OR', pitchingFilterMode:'OR', filters:[]};
 const DEFAULT_SORT_BY_VIEW = {all:'作品順', available:'作品順', favorite:'作品順', proList:'ポジション順', graduates:'星順', manage:'作品順'};
 const UI_STORE_KEY = 'pawapuro-character-manager-complete-ui';
 const STORE_KEY = 'pawapuro-character-manager-complete';
@@ -855,6 +860,7 @@ function viewPref(view=currentView){
   if(!SORT_OPTIONS.includes(uiState[view].sortKey)) uiState[view].sortKey = base.sortKey;
   if(!['asc','desc'].includes(uiState[view].sortDir)) uiState[view].sortDir = 'asc';
   if(!['AND','OR'].includes(uiState[view].filterMode)) uiState[view].filterMode = 'AND';
+  if(!['AND','OR'].includes(uiState[view].manualTagFilterMode)) uiState[view].manualTagFilterMode = 'OR';
   if(!['AND','OR'].includes(uiState[view].positionFilterMode)) uiState[view].positionFilterMode = 'OR';
   if(!['AND','OR'].includes(uiState[view].fielderPositionFilterMode)) uiState[view].fielderPositionFilterMode = 'OR';
   if(!['AND','OR'].includes(uiState[view].pitchingFilterMode)) uiState[view].pitchingFilterMode = 'OR';
@@ -1461,19 +1467,18 @@ function criterionMatches(c, token, st=listState(), context={}){
 function passesViewFilters(c, st=listState()){
   const pref=viewPref(); const active=pref.filters || [];
   if(!active.length) return true;
+
+  // ポジションだけは従来の特殊ロジックをそのまま維持する。
   const positionTokens = active.filter(f=>decodeCriterion(f).kind==='position');
   const majorPos = positionTokens.filter(f=>['投手','野手'].includes(decodeCriterion(f).value));
   const fielderPos = positionTokens.filter(f=>FIELD_POSITIONS.includes(decodeCriterion(f).value));
   const pitch = active.filter(f=>decodeCriterion(f).kind==='pitchingRole');
-  const other = active.filter(f=>!['position','pitchingRole'].includes(decodeCriterion(f).kind));
   const positionHasPitcher = majorPos.some(f=>decodeCriterion(f).value==='投手');
   const matchWithContext = f => criterionMatches(c,f,st,{positionHasPitcher, positionFilterMode:pref.positionFilterMode});
   const majorPass = !majorPos.length ? true : (pref.positionFilterMode==='AND' ? majorPos.every(matchWithContext) : majorPos.some(matchWithContext));
   const fielderPass = !fielderPos.length ? true : (pref.fielderPositionFilterMode==='AND' ? fielderPos.every(matchWithContext) : fielderPos.some(matchWithContext));
   let positionPass = true;
   if(majorPos.length && fielderPos.length){
-    // 大分類（投手/野手）と野手ポジション群の関係は「ポジション全体の条件」で決める。
-    // 例：野手 AND（捕手 OR 外野手）を表現したい場合は、全体AND・野手ポジションORにする。
     positionPass = pref.positionFilterMode==='AND' ? (majorPass && fielderPass) : (majorPass || fielderPass);
   }else if(majorPos.length){
     positionPass = majorPass;
@@ -1483,9 +1488,26 @@ function passesViewFilters(c, st=listState()){
   const pitchPass = (!positionHasPitcher || !pitch.length) ? true : (pref.pitchingFilterMode==='AND' ? pitch.every(matchWithContext) : pitch.some(matchWithContext));
   const hasPositionBlock = !!(majorPos.length || fielderPos.length || (positionHasPitcher && pitch.length));
   const positionBlockPass = positionPass && pitchPass;
-  const otherPass = !other.length ? true : (pref.filterMode==='OR' ? other.some(f=>criterionMatches(c,f,st)) : other.every(f=>criterionMatches(c,f,st)));
-  if(hasPositionBlock && other.length) return pref.filterMode==='OR' ? (otherPass || positionBlockPass) : (otherPass && positionBlockPass);
-  return hasPositionBlock ? positionBlockPass : otherPass;
+
+  // ポジション以外は「カテゴリ内」と「カテゴリ間」を分離する。
+  // 同一カテゴリ内は常にOR。手動タグだけは専用のAND/OR設定を持つ。
+  const other = active.filter(f=>!['position','pitchingRole'].includes(decodeCriterion(f).kind));
+  const byKind = new Map();
+  other.forEach(token=>{
+    const kind=decodeCriterion(token).kind;
+    if(!byKind.has(kind)) byKind.set(kind,[]);
+    byKind.get(kind).push(token);
+  });
+  const categoryResults=[];
+  for(const [kind,tokens] of byKind.entries()){
+    const pass = kind==='manual' && pref.manualTagFilterMode==='AND'
+      ? tokens.every(f=>criterionMatches(c,f,st))
+      : tokens.some(f=>criterionMatches(c,f,st));
+    categoryResults.push(pass);
+  }
+  if(hasPositionBlock) categoryResults.push(positionBlockPass);
+  if(!categoryResults.length) return true;
+  return pref.filterMode==='OR' ? categoryResults.some(Boolean) : categoryResults.every(Boolean);
 }
 function baseFiltered(){
   const st=listState(); const pref=viewPref(); const q=(pref.search||'').trim().toLowerCase();
@@ -1552,7 +1574,17 @@ function renderCardsSmart(list, empty='該当するキャラクターはあり�
 function smallThumb(c){ const current=characterById(c.id)||c; const src=imgSrc(current); return `<div class="smallThumb">${src?characterImageHtml(current,current.name):'画像なし'}</div>`; }
 function thumb(c){ const current=characterById(c.id)||c; const src=imgSrc(current); return `<div class="thumb">${src?characterImageHtml(current,current.name):'画像なし'}</div>`; }
 function tagClass(t){ if(t==='プロ') return 'pro'; if(t==='未プロ') return 'no'; if(t==='未作成'||t==='ポジションなし') return 'blank'; if(t==='野手'||['先発','中継ぎ','抑え'].includes(t)) return 'position'; if(t.startsWith('⭐')) return 'star'; if(t==='お気に入り') return 'favorite'; if(t==='再入学') return 're'; return ''; }
-function tagsHtml(c){ const current=characterById(c.id)||c; const cr=creation(current); const auto=autoTags(current).map(t=>`<span class="tag ${tagClass(t)}">${escapeHtml(t)}</span>`); const manual=(cr.manualTags||[]).map(t=>`<span class="tag manual">${escapeHtml(t)}</span>`); return [...auto,...manual].join(''); }
+function manualTagsInPriority(tags, st=state){
+  const values=[...new Set((tags||[]).map(String).filter(Boolean))];
+  const priority=(st.settings?.manualTags||[]);
+  const rank=new Map(priority.map((tag,i)=>[tag,i]));
+  return values.sort((a,b)=>{
+    const ar=rank.has(a)?rank.get(a):Number.MAX_SAFE_INTEGER;
+    const br=rank.has(b)?rank.get(b):Number.MAX_SAFE_INTEGER;
+    return ar-br || a.localeCompare(b,'ja');
+  });
+}
+function tagsHtml(c){ const current=characterById(c.id)||c; const cr=creation(current); const auto=autoTags(current).map(t=>`<span class="tag ${tagClass(t)}">${escapeHtml(t)}</span>`); const manual=manualTagsInPriority(cr.manualTags).map(t=>`<span class="tag manual">${escapeHtml(t)}</span>`); return [...auto,...manual].join(''); }
 function makeChoice({id,value,options,placeholder='未選択',addLabel='',onAddKey=''}){
   const display = value ? escapeHtml(value) : `<span style="color:#888">${escapeHtml(placeholder)}</span>`;
   return `<div class="choice" data-choice="${id}"><button class="choiceBtn" data-action="toggle-choice">${display}</button><div class="choiceMenu"><button data-action="choose" data-choice-id="${id}" data-value="">${escapeHtml(placeholder)}</button>${options.map(o=>`<button data-action="choose" data-choice-id="${id}" data-value="${escapeHtml(o)}" class="${o===value?'selected':''}">${escapeHtml(o)}</button>`).join('')}${addLabel?`<button class="addChoice" data-action="add-choice" data-choice-id="${id}" data-add-key="${onAddKey}">${escapeHtml(addLabel)}</button>`:''}</div></div>`;
@@ -1786,7 +1818,7 @@ function renderDashboard(){
   const st=listState(); const base=baseFiltered();
   const createdNotPro = base.filter(c=>isCreated(creationFrom(st,c)) && allTagsFrom(st,c).includes('未プロ'));
   const favUncreated = base.filter(c=>creationFrom(st,c).favorite && !isCreated(creationFrom(st,c)));
-  $('#view').innerHTML = `<div class="hero"><div class="heroHead"><div><h1>パワプロ　作成キャラ管理ツール v4.12</h1><p>パワプロで作成したキャラクターを、作品・育成モード・星・ポジション・栄冠ナインの記録などとあわせて管理できます。</p></div><div class="heroActions"><button class="btn" id="openDashboardKpis">表示カード設定</button></div></div></div>${kpis()}<section class="section"><div class="sectionHead"><h2>作成済み未プロ</h2><span class="note">作成済みで、まだプロ入りしていないキャラクターを表示します。</span></div>${renderCardsSmart(createdNotPro.slice(0,12),'該当するキャラクターはありません。')}</section><section class="section"><div class="sectionHead"><h2>お気に入り未作成</h2><span class="note">お気に入りに登録されていて、まだ作成していないキャラクターを表示します。</span></div>${renderCardsSmart(favUncreated.slice(0,12),'該当するキャラクターはありません。')}</section>`;
+  $('#view').innerHTML = `<div class="hero"><div class="heroHead"><div><h1>パワプロ　作成キャラ管理ツール v4.14</h1><p>パワプロで作成したキャラクターを、作品・育成モード・星・ポジション・栄冠ナインの記録などとあわせて管理できます。</p></div><div class="heroActions"><button class="btn" id="openDashboardKpis">表示カード設定</button></div></div></div>${kpis()}<section class="section"><div class="sectionHead"><h2>作成済み未プロ</h2><span class="note">作成済みで、まだプロ入りしていないキャラクターを表示します。</span></div>${renderCardsSmart(createdNotPro.slice(0,12),'該当するキャラクターはありません。')}</section><section class="section"><div class="sectionHead"><h2>お気に入り未作成</h2><span class="note">お気に入りに登録されていて、まだ作成していないキャラクターを表示します。</span></div>${renderCardsSmart(favUncreated.slice(0,12),'該当するキャラクターはありません。')}</section>`;
 }
 function renderAll(){ const st=listState(); const base=baseFiltered(); $('#view').innerHTML=`<section class="section"><div class="sectionHead"><h2>全キャラ</h2><span class="note">${base.length}件</span></div>${renderCardsSmart(base)}</section>`; }
 function renderAvailable(){
@@ -1874,7 +1906,7 @@ function graduateTagsHtml(row){
     tags.push('ポジションなし','⭐0');
   }
   if(cr.favorite) tags.push('お気に入り');
-  (cr.manualTags||[]).forEach(t=>tags.push(t));
+  manualTagsInPriority(cr.manualTags).forEach(t=>tags.push(t));
   return [...new Set(tags)].map(t=>`<span class="tag ${tagClass(t)}">${escapeHtml(t)}</span>`).join('');
 }
 function graduateCard(row){
@@ -1939,6 +1971,15 @@ function setGroupPriorityOrder(work, fromIndex, toIndex){
   if(!state.settings.groupPriority || typeof state.settings.groupPriority!=='object') state.settings.groupPriority={};
   state.settings.groupPriority[work]=items;
   markDataChanged(); renderCurrent();
+}
+function setManualTagOrder(fromIndex,toIndex){
+  const items=[...(state.settings.manualTags||[])];
+  if(fromIndex===toIndex || fromIndex<0 || toIndex<0 || fromIndex>=items.length || toIndex>=items.length) return;
+  const [moved]=items.splice(fromIndex,1);
+  items.splice(toIndex,0,moved);
+  state.settings.manualTags=items;
+  markDataChanged();
+  renderCurrent();
 }
 function schoolUsageCount(name){
   let count=0;
@@ -2021,14 +2062,20 @@ function groupPriorityPanel(){
     : '<div class="empty">この作品には作品内グループが登録されていません。</div>';
   return `<div class="detailPanel"><div class="sectionHead"><h2>作品内グループ順</h2><span class="note">作品ごとに、グループの並び順を設定できます。</span></div><div class="label">作品選択</div><div class="workSelectPanel">${workButtons}</div><div class="separator"></div><div class="label">${escapeHtml(selectedGroupPriorityWork || '作品未選択')} のグループ順</div><div class="hint">左側の三本線をドラッグすると順番を変更できます。グループ未設定のキャラクターは常に最後に並びます。</div>${list}</div>`;
 }
-function renderTags(){
+function manualTagManagePanel(){
   const tags=state.settings.manualTags || [];
-  let html=`<section class="section"><div class="sectionHead"><h2>タグ・ソート設定</h2><span class="note">手動タグ・学校名の管理と、作品・作品内グループなどのソート優先度を設定できます。</span></div><div class="detailPanel"><div class="label">手動タグ一覧</div>`;
-  if(!tags.length) html += `<div class="empty">手動タグは登録されていません。</div>`;
-  else html += `<div class="tagManageList">${tags.map((t,i)=>`<div class="tagManageRow"><input data-action="edit-manual-tag-master" data-index="${i}" value="${escapeHtml(t)}"><button class="btn danger small" data-action="remove-tag-master" data-value="${escapeHtml(t)}">×</button></div>`).join('')}</div>`;
-  html += `<div class="separator"></div><button class="btn primary" data-action="add-manual-tag-master">＋タグ追加</button><p class="hint">こちらでは手動タグのみ編集・削除できます。お気に入りは、各カード右上の星ボタンから設定してください。</p></div>`;
+  const rows=tags.length
+    ? `<div class="tagManageList" data-drag-list="manualTag">${tags.map((t,i)=>`<div class="tagManageRow" data-drag-kind="manualTag" data-index="${i}"><span class="dragHandle" draggable="true">☰</span><input data-action="edit-manual-tag-master" data-index="${i}" value="${escapeHtml(t)}" aria-label="手動タグ名"><button class="btn danger small" data-action="remove-tag-master" data-value="${escapeHtml(t)}">×</button></div>`).join('')}</div>`
+    : `<div class="empty">手動タグは登録されていません。</div>`;
+  return `<div class="detailPanel"><div class="sectionHead"><h2>手動タグ管理</h2><span class="note">タグ名と優先度を管理できます。</span></div><div class="hint">左側の三本線をドラッグすると優先度を変更できます。上にあるタグほど先に表示され、キャラ編集画面やフィルタでもこの順番を使用します。</div>${rows}<div class="separator"></div><button class="btn primary" data-action="add-manual-tag-master">＋タグ追加</button><p class="hint">こちらでは手動タグのみ編集・削除できます。お気に入りは、各カード右上の星ボタンから設定してください。</p></div>`;
+}
+function renderTags(){
+  let html=`<section class="section"><div class="sectionHead"><h2>タグ・ソート設定</h2><span class="note">作品・作品内グループなどのソート優先度と、手動タグ・学校名を管理できます。</span></div>`;
+  html += `<div class="detailPanel"><div class="sectionHead"><h2>ソート優先度</h2><span class="note">作品順・ポジション順・モード順の優先度をドラッグ操作で変更できます。</span></div><div class="priorityManage">${priorityBox('work','作品順の優先度')}${priorityBox('position','ポジション順の優先度')}${priorityBox('mode','モード順の優先度')}</div></div>`;
+  html += groupPriorityPanel();
+  html += manualTagManagePanel();
   html += schoolManagePanel();
-  html += `<div class="detailPanel"><div class="sectionHead"><h2>ソート優先度</h2><span class="note">作品順・ポジション順・モード順の優先度をドラッグ操作で変更できます。</span></div><div class="priorityManage">${priorityBox('work','作品順の優先度')}${priorityBox('position','ポジション順の優先度')}${priorityBox('mode','モード順の優先度')}</div></div>${groupPriorityPanel()}</section>`;
+  html += `</section>`;
   $('#view').innerHTML=html;
 }
 function debutOrderedCharsFor(work, st=state){
@@ -3121,10 +3168,17 @@ function filterButton(token){
   const pref=viewPref(); const selected=(pref.filters||[]).includes(token);
   return `<button class="filterChip ${selected?'selected':''}" data-action="toggle-filter-criterion" data-value="${escapeHtml(token)}">${escapeHtml(criterionLabel(token))}</button>`;
 }
-function filterGroup(title, tokens){
+function filterGroup(title, tokens, options={}){
   tokens = [...new Set(tokens)].filter(Boolean);
   if(!tokens.length) return '';
-  return `<div class="filterGroup"><div class="filterGroupTitle">${escapeHtml(title)}</div><div class="filterChips">${tokens.map(filterButton).join('')}</div></div>`;
+  const pref=viewPref();
+  const kind=options.kind || decodeCriterion(tokens[0]).kind;
+  const logic = options.manualLogic ? `<div class="filterGroupLogic"><span class="label">手動タグ内の条件</span><span class="filterMode"><button class="pillBtn ${pref.manualTagFilterMode==='AND'?'selected':''}" data-action="set-manual-tag-filter-mode" data-value="AND">AND：全部含む</button><button class="pillBtn ${pref.manualTagFilterMode==='OR'?'selected':''}" data-action="set-manual-tag-filter-mode" data-value="OR">OR：どれか含む</button></span></div>` : '';
+  return `<div class="filterGroup">
+    <div class="filterGroupHead"><div class="filterGroupTitle">${escapeHtml(title)}</div><div class="filterGroupActions"><button class="btn small" data-action="select-filter-group-all" data-kind="${escapeHtml(kind)}">全選択</button><button class="btn small" data-action="clear-filter-group" data-kind="${escapeHtml(kind)}">全解除</button></div></div>
+    ${logic}
+    <div class="filterChips">${tokens.map(filterButton).join('')}</div>
+  </div>`;
 }
 function filterButtonWithVirtual(token, virtualSelected=false){
   const pref=viewPref(); const selected=(pref.filters||[]).includes(token) || virtualSelected;
@@ -3226,13 +3280,26 @@ function filterData(st=listState()){
   const manual=(st.settings.manualTags||[]).map(t=>encodeCriterion('manual',t));
   return {worksTokens, groupTokens, modeTokens, statusTokens, schools, years, posTokens, pitchingRoleTokens, starTokens, manual};
 }
+function filterTokensForKind(kind, d=filterData()){
+  const map={
+    work:d.worksTokens,
+    group:d.groupTokens,
+    mode:d.modeTokens,
+    status:d.statusTokens,
+    school:d.schools,
+    year:d.years,
+    star:d.starTokens,
+    manual:d.manual
+  };
+  return map[kind] || [];
+}
 function openFilterModal(){
   sanitizeGroupFiltersForSelectedWorks();
   cleanupPitchingRoleFilters();
   const pref=viewPref(); const d=filterData();
   const selectedLabels=(pref.filters||[]).map(criterionLabel).join(' / ') || 'なし';
   $('#modalRoot').innerHTML=`<div class="modalBackdrop"><div class="modal filterModal"><div class="modalHead"><h2>フィルタ</h2><button class="close" data-action="close-modal">閉じる</button></div>
-    <div class="filterTools"><span class="label">条件の扱い</span><span class="filterMode"><button class="pillBtn ${pref.filterMode==='AND'?'selected':''}" data-action="set-filter-mode" data-value="AND">AND：全部含む</button><button class="pillBtn ${pref.filterMode==='OR'?'selected':''}" data-action="set-filter-mode" data-value="OR">OR：どれか含む</button></span><button class="btn small" data-action="clear-view-filters">クリア</button></div>
+    <div class="filterTools"><span class="label">カテゴリ間の条件</span><span class="filterMode"><button class="pillBtn ${pref.filterMode==='AND'?'selected':''}" data-action="set-filter-mode" data-value="AND">AND：すべてのカテゴリ</button><button class="pillBtn ${pref.filterMode==='OR'?'selected':''}" data-action="set-filter-mode" data-value="OR">OR：いずれかのカテゴリ</button></span><button class="btn small" data-action="clear-view-filters">クリア</button></div>
     <div class="filterSummary">選択中：${escapeHtml(selectedLabels)}</div>
     <div class="separator"></div>
     <div class="filterSections">
@@ -3244,9 +3311,9 @@ function openFilterModal(){
       ${filterGroup('入学年度', d.years)}
       ${filterGroupPosition(d.posTokens, d.pitchingRoleTokens)}
       ${filterGroup('星', d.starTokens)}
-      ${filterGroup('手動タグ', d.manual)}
+      ${filterGroup('手動タグ', d.manual, {kind:'manual', manualLogic:true})}
     </div>
-    <div class="separator"></div><p class="hint">フィルタは選択した時点で一覧へ反映されます。作品内グループは、作品を選択した場合にのみ表示されます。</p>
+    <div class="separator"></div><p class="hint">フィルタは選択した時点で一覧へ反映されます。ポジション以外は同じカテゴリ内でOR判定、上部のAND/ORはカテゴリ間に適用されます。手動タグだけはカテゴリ内のAND/ORを切り替えられます。作品内グループは、作品を選択した場合にのみ表示されます。</p>
   </div></div>`;
 }
 function reopenFilterModalPreserveScroll(){
@@ -3260,6 +3327,7 @@ function refreshFilterModalControls(){
   const pref=viewPref();
   $$('.filterChip').forEach(btn=>btn.classList.toggle('selected', (pref.filters||[]).includes(btn.dataset.value)));
   $$('[data-action="set-filter-mode"]').forEach(btn=>btn.classList.toggle('selected', btn.dataset.value===pref.filterMode));
+  $$('[data-action="set-manual-tag-filter-mode"]').forEach(btn=>btn.classList.toggle('selected', btn.dataset.value===pref.manualTagFilterMode));
   $$('[data-action="set-position-filter-mode"]').forEach(btn=>btn.classList.toggle('selected', btn.dataset.value===pref.positionFilterMode));
   $$('[data-action="set-fielder-position-filter-mode"]').forEach(btn=>btn.classList.toggle('selected', btn.dataset.value===pref.fielderPositionFilterMode));
   $$('[data-action="set-pitching-filter-mode"]').forEach(btn=>btn.classList.toggle('selected', btn.dataset.value===pref.pitchingFilterMode));
@@ -3758,6 +3826,23 @@ document.addEventListener('click', async e=>{
     if(kind==='work' || kind==='position') reopenFilterModalPreserveScroll(); else refreshFilterModalControls();
     refreshTopControls(); return; }
   if(action==='set-filter-mode'){ const pref=viewPref(); pref.filterMode=t.dataset.value==='OR'?'OR':'AND'; saveUiState(); renderCurrent(); refreshFilterModalControls(); return; }
+  if(action==='set-manual-tag-filter-mode'){ const pref=viewPref(); pref.manualTagFilterMode=t.dataset.value==='AND'?'AND':'OR'; saveUiState(); renderCurrent(); refreshFilterModalControls(); return; }
+  if(action==='select-filter-group-all'){
+    const pref=viewPref(); const kind=t.dataset.kind || ''; const tokens=filterTokensForKind(kind);
+    pref.filters=[...(pref.filters||[]).filter(x=>decodeCriterion(x).kind!==kind), ...tokens];
+    if(kind==='work') sanitizeGroupFiltersForSelectedWorks();
+    cleanupPitchingRoleFilters(); saveUiState(); renderCurrent();
+    if(kind==='work') reopenFilterModalPreserveScroll(); else refreshFilterModalControls();
+    refreshTopControls(); return;
+  }
+  if(action==='clear-filter-group'){
+    const pref=viewPref(); const kind=t.dataset.kind || '';
+    pref.filters=(pref.filters||[]).filter(x=>decodeCriterion(x).kind!==kind);
+    if(kind==='work') sanitizeGroupFiltersForSelectedWorks();
+    cleanupPitchingRoleFilters(); saveUiState(); renderCurrent();
+    if(kind==='work') reopenFilterModalPreserveScroll(); else refreshFilterModalControls();
+    refreshTopControls(); return;
+  }
   if(action==='set-position-filter-mode'){ const pref=viewPref(); pref.positionFilterMode=t.dataset.value==='AND'?'AND':'OR'; saveUiState(); renderCurrent(); refreshFilterModalControls(); return; }
   if(action==='set-fielder-position-filter-mode'){ const pref=viewPref(); pref.fielderPositionFilterMode=t.dataset.value==='AND'?'AND':'OR'; saveUiState(); renderCurrent(); refreshFilterModalControls(); return; }
   if(action==='set-pitching-filter-mode'){ const pref=viewPref(); pref.pitchingFilterMode=t.dataset.value==='AND'?'AND':'OR'; saveUiState(); renderCurrent(); refreshFilterModalControls(); return; }
@@ -4021,6 +4106,7 @@ function moveByInsertIndex(kind, payload, insertIndex){
   if(kind==='debut') setDebutOrder(payload.work, fromIndex, toIndex);
   if(kind==='dashboardKpi') setDashboardKpiOrder(fromIndex, toIndex);
   if(kind==='school') setSchoolOrder(fromIndex, toIndex);
+  if(kind==='manualTag') setManualTagOrder(fromIndex, toIndex);
 }
 
 document.addEventListener('dragstart', e=>{
