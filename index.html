@@ -167,6 +167,9 @@ h2{font-size:21px;margin:0}
 .tagManageList{display:grid;gap:10px;margin-top:12px;max-width:560px}
 .tagManageRow{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:14px;padding:9px}
 .tagManageRow input{width:100%}
+.schoolManageRow{grid-template-columns:auto minmax(0,1fr) auto;cursor:default}
+.schoolManageRow .dragHandle{cursor:grab}
+.schoolManageRow input{width:100%;min-width:0}
 .schoolPicker{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 18px}
 .schoolPicker .pillBtn{font-weight:800}
 .schoolPicker .pillBtn.selected{background:var(--yellow-weak);border-color:#e0be78;color:#78530d}
@@ -336,7 +339,7 @@ body.compactMode .favoriteBtn{width:32px;height:32px;font-size:18px}
 <div class="app">
   <aside class="sidebar">
     <div class="logo">パワプロ　作成キャラ管理ツール</div>
-    <div class="sub">キャラクター作成・名簿管理ツール / v4.11</div>
+    <div class="sub">キャラクター作成・名簿管理ツール / v4.12</div>
     <div class="nav">
       <button class="active" data-view="all">全キャラ</button>
       <button data-view="available">作成可能</button>
@@ -355,7 +358,7 @@ body.compactMode .favoriteBtn{width:32px;height:32px;font-size:18px}
       <button data-view="contact">お問い合わせ・不具合報告</button>
     </div>
     <div class="sidebox">
-      <b>完全版 v4.11</b><br>
+      <b>完全版 v4.12</b><br>
       キャラクターの登録・育成情報の管理・バックアップなどを、左メニューからご利用いただけます。
     </div>
   </aside>
@@ -383,7 +386,7 @@ body.compactMode .favoriteBtn{width:32px;height:32px;font-size:18px}
 <div id="modalRoot"></div>
 <div id="toast" class="toast"></div>
 <script>
-const DATA_VERSION = '4.11';
+const DATA_VERSION = '4.12';
 const CONTACT_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSepH-ZdScbl_HDJ3wXhfumMIaoATbIpUcVVgwpb831sFx24tw/viewform';
 const ANALYTICS_VIEW_NAMES = {
   all:'all_characters', available:'available', pro:'pro_players', graduates:'graduates', favorites:'favorites',
@@ -893,7 +896,7 @@ function normalizeState(s){
   if(!settings.seedCharactersDisabled){
     SEED_CHARACTERS.forEach(seed=>{ if(!existingIds.has(seed.id)){ chars.push(deepClone(seed)); existingIds.add(seed.id); } });
   }
-  settings.schools = Array.isArray(settings.schools) ? settings.schools : [...DEFAULT_SETTINGS.schools];
+  settings.schools = Array.isArray(settings.schools) ? [...new Set(settings.schools.map(x=>String(x||'').trim()).filter(Boolean))] : [...DEFAULT_SETTINGS.schools];
   settings.manualTags = Array.isArray(settings.manualTags) ? settings.manualTags : [...DEFAULT_SETTINGS.manualTags];
   settings.dashboardKpis = Array.isArray(settings.dashboardKpis) ? settings.dashboardKpis.filter(k=>dashboardMetricDefs().some(m=>m.key===k)) : [...DEFAULT_DASHBOARD_KPIS];
   if(!settings.dashboardKpis.length) settings.dashboardKpis = [...DEFAULT_DASHBOARD_KPIS];
@@ -1783,7 +1786,7 @@ function renderDashboard(){
   const st=listState(); const base=baseFiltered();
   const createdNotPro = base.filter(c=>isCreated(creationFrom(st,c)) && allTagsFrom(st,c).includes('未プロ'));
   const favUncreated = base.filter(c=>creationFrom(st,c).favorite && !isCreated(creationFrom(st,c)));
-  $('#view').innerHTML = `<div class="hero"><div class="heroHead"><div><h1>パワプロ　作成キャラ管理ツール v4.11</h1><p>パワプロで作成したキャラクターを、作品・育成モード・星・ポジション・栄冠ナインの記録などとあわせて管理できます。</p></div><div class="heroActions"><button class="btn" id="openDashboardKpis">表示カード設定</button></div></div></div>${kpis()}<section class="section"><div class="sectionHead"><h2>作成済み未プロ</h2><span class="note">作成済みで、まだプロ入りしていないキャラクターを表示します。</span></div>${renderCardsSmart(createdNotPro.slice(0,12),'該当するキャラクターはありません。')}</section><section class="section"><div class="sectionHead"><h2>お気に入り未作成</h2><span class="note">お気に入りに登録されていて、まだ作成していないキャラクターを表示します。</span></div>${renderCardsSmart(favUncreated.slice(0,12),'該当するキャラクターはありません。')}</section>`;
+  $('#view').innerHTML = `<div class="hero"><div class="heroHead"><div><h1>パワプロ　作成キャラ管理ツール v4.12</h1><p>パワプロで作成したキャラクターを、作品・育成モード・星・ポジション・栄冠ナインの記録などとあわせて管理できます。</p></div><div class="heroActions"><button class="btn" id="openDashboardKpis">表示カード設定</button></div></div></div>${kpis()}<section class="section"><div class="sectionHead"><h2>作成済み未プロ</h2><span class="note">作成済みで、まだプロ入りしていないキャラクターを表示します。</span></div>${renderCardsSmart(createdNotPro.slice(0,12),'該当するキャラクターはありません。')}</section><section class="section"><div class="sectionHead"><h2>お気に入り未作成</h2><span class="note">お気に入りに登録されていて、まだ作成していないキャラクターを表示します。</span></div>${renderCardsSmart(favUncreated.slice(0,12),'該当するキャラクターはありません。')}</section>`;
 }
 function renderAll(){ const st=listState(); const base=baseFiltered(); $('#view').innerHTML=`<section class="section"><div class="sectionHead"><h2>全キャラ</h2><span class="note">${base.length}件</span></div>${renderCardsSmart(base)}</section>`; }
 function renderAvailable(){
@@ -1805,12 +1808,17 @@ function renderProList(){
   $('#view').innerHTML=`<section class="section"><div class="sectionHead"><h2>プロ選手一覧</h2><span class="note">プロ入りしているキャラクターを表示します。</span></div>${renderCardsSmart(base,'プロ入りしているキャラクターはありません。')}</section>`;
 }
 function graduateSchoolOptions(st=listState()){
-  const set=new Set(st.settings.schools || []);
+  const ordered=[...(st.settings.schools || [])].map(x=>String(x||'').trim()).filter(Boolean);
+  const seen=new Set(ordered);
+  const extra=[];
   st.characters.forEach(c=>{
     const cr=creationFrom(st,c);
-    if(cr.mode==='栄冠ナイン') eikanRecordsOf(cr).forEach(r=>{ if(r.school) set.add(r.school); });
+    if(cr.mode==='栄冠ナイン') eikanRecordsOf(cr).forEach(r=>{
+      const school=String(r.school||'').trim();
+      if(school && !seen.has(school)){ seen.add(school); extra.push(school); }
+    });
   });
-  return [...set].filter(Boolean).sort((a,b)=>a.localeCompare(b,'ja'));
+  return [...ordered, ...extra.sort((a,b)=>a.localeCompare(b,'ja'))];
 }
 function graduateEntriesForSchool(school, st=listState()){
   const rows=[];
@@ -1932,6 +1940,77 @@ function setGroupPriorityOrder(work, fromIndex, toIndex){
   state.settings.groupPriority[work]=items;
   markDataChanged(); renderCurrent();
 }
+function schoolUsageCount(name){
+  let count=0;
+  Object.values(state.creations || {}).forEach(cr=>{
+    const records=Array.isArray(cr?.eikanRecords) ? cr.eikanRecords : [];
+    records.forEach(r=>{ if(String(r?.school||'')===name) count++; });
+  });
+  return count;
+}
+function replaceSchoolReferences(oldName,newName){
+  Object.values(state.creations || {}).forEach(cr=>{
+    if(!Array.isArray(cr?.eikanRecords)) return;
+    cr.eikanRecords.forEach(r=>{ if(String(r?.school||'')===oldName) r.school=newName; });
+  });
+  if(selectedGraduateSchool===oldName) selectedGraduateSchool=newName || null;
+  Object.values(uiState || {}).forEach(pref=>{
+    if(!pref || !Array.isArray(pref.filters)) return;
+    pref.filters=pref.filters.map(token=>token===encodeCriterion('school',oldName) ? (newName ? encodeCriterion('school',newName) : '') : token).filter(Boolean);
+  });
+}
+function renameSchoolValue(oldName,newName){
+  oldName=String(oldName||'').trim();
+  newName=String(newName||'').trim();
+  if(!oldName || !newName || oldName===newName) return false;
+  const idx=state.settings.schools.indexOf(oldName);
+  if(idx<0) return false;
+  const duplicateIndex=state.settings.schools.indexOf(newName);
+  replaceSchoolReferences(oldName,newName);
+  if(duplicateIndex>=0 && duplicateIndex!==idx){
+    state.settings.schools.splice(idx,1);
+    toast(`学校「${oldName}」を「${newName}」へ統合しました`);
+  }else{
+    state.settings.schools[idx]=newName;
+    toast(`学校名を「${newName}」に変更しました`);
+  }
+  state.settings.schools=[...new Set(state.settings.schools.map(x=>String(x||'').trim()).filter(Boolean))];
+  markDataChanged();
+  return true;
+}
+function requestSchoolDelete(name){
+  const school=String(name||'').trim();
+  if(!school) return;
+  const usage=schoolUsageCount(school);
+  $('#modalRoot').innerHTML=`<div class="modalBackdrop"><div class="modal"><div class="modalHead"><h2>学校名を削除</h2><button class="close" data-action="close-modal">閉じる</button></div><p><b>${escapeHtml(school)}</b> を学校名一覧から削除します。</p>${usage ? `<div class="warningBox">この学校は栄冠ナインの記録 ${usage}件で使用されています。削除すると、その${usage}件の学校名も空欄になります。入学年度やプロ状況など、学校名以外の記録は残ります。</div>` : '<p class="hint">この学校を使用している栄冠ナインの記録はありません。</p>'}<div class="separator"></div><div class="inline"><button class="btn danger" data-action="confirm-school-delete" data-value="${escapeHtml(school)}">削除する</button><button class="btn" data-action="close-modal">キャンセル</button></div></div></div>`;
+}
+function deleteSchoolValue(name){
+  const school=String(name||'').trim();
+  if(!school) return;
+  replaceSchoolReferences(school,'');
+  state.settings.schools=(state.settings.schools||[]).filter(x=>x!==school);
+  markDataChanged();
+  $('#modalRoot').innerHTML='';
+  renderCurrent();
+  toast(`学校「${school}」を削除しました`);
+}
+function setSchoolOrder(fromIndex,toIndex){
+  const items=[...(state.settings.schools||[])];
+  if(fromIndex===toIndex || fromIndex<0 || toIndex<0 || fromIndex>=items.length || toIndex>=items.length) return;
+  const [moved]=items.splice(fromIndex,1);
+  items.splice(toIndex,0,moved);
+  state.settings.schools=items;
+  markDataChanged();
+  renderCurrent();
+}
+function schoolManagePanel(){
+  const schools=state.settings.schools || [];
+  const rows=schools.length
+    ? `<div class="priorityList" data-drag-list="school">${schools.map((school,i)=>`<div class="priorityRow schoolManageRow" data-drag-kind="school" data-index="${i}"><span class="dragHandle" draggable="true">☰</span><input data-action="edit-school-master" data-index="${i}" value="${escapeHtml(school)}" aria-label="学校名"><button class="btn danger small" data-action="remove-school-master" data-value="${escapeHtml(school)}">×</button></div>`).join('')}</div>`
+    : '<div class="empty">学校名は登録されていません。</div>';
+  return `<div class="detailPanel"><div class="sectionHead"><h2>学校名管理</h2><span class="note">栄冠ナインで使用する学校名を管理できます。</span></div><div class="hint">学校名は直接編集できます。名前を変更すると、既存の栄冠ナイン記録にも一括で反映されます。左側の三本線をドラッグすると候補の表示順を変更できます。</div>${rows}<div class="separator"></div><button class="btn primary" data-action="add-school-master">＋学校追加</button></div>`;
+}
+
 function groupPriorityPanel(){
   const ws=works(state);
   if(!selectedGroupPriorityWork || !ws.includes(selectedGroupPriorityWork)) selectedGroupPriorityWork=ws[0] || '';
@@ -1944,10 +2023,11 @@ function groupPriorityPanel(){
 }
 function renderTags(){
   const tags=state.settings.manualTags || [];
-  let html=`<section class="section"><div class="sectionHead"><h2>タグ・ソート設定</h2><span class="note">手動タグの管理と、作品・作品内グループなどのソート優先度を設定できます。</span></div><div class="detailPanel"><div class="label">手動タグ一覧</div>`;
+  let html=`<section class="section"><div class="sectionHead"><h2>タグ・ソート設定</h2><span class="note">手動タグ・学校名の管理と、作品・作品内グループなどのソート優先度を設定できます。</span></div><div class="detailPanel"><div class="label">手動タグ一覧</div>`;
   if(!tags.length) html += `<div class="empty">手動タグは登録されていません。</div>`;
   else html += `<div class="tagManageList">${tags.map((t,i)=>`<div class="tagManageRow"><input data-action="edit-manual-tag-master" data-index="${i}" value="${escapeHtml(t)}"><button class="btn danger small" data-action="remove-tag-master" data-value="${escapeHtml(t)}">×</button></div>`).join('')}</div>`;
   html += `<div class="separator"></div><button class="btn primary" data-action="add-manual-tag-master">＋タグ追加</button><p class="hint">こちらでは手動タグのみ編集・削除できます。お気に入りは、各カード右上の星ボタンから設定してください。</p></div>`;
+  html += schoolManagePanel();
   html += `<div class="detailPanel"><div class="sectionHead"><h2>ソート優先度</h2><span class="note">作品順・ポジション順・モード順の優先度をドラッグ操作で変更できます。</span></div><div class="priorityManage">${priorityBox('work','作品順の優先度')}${priorityBox('position','ポジション順の優先度')}${priorityBox('mode','モード順の優先度')}</div></div>${groupPriorityPanel()}</section>`;
   $('#view').innerHTML=html;
 }
@@ -2931,7 +3011,7 @@ function renderAbout(){
   $('#view').innerHTML=`<section class="section"><div class="sectionHead"><h2>このサイトについて</h2><span class="note">「パワプロ　作成キャラ管理ツール」の概要と、データの取り扱いについてご案内します。</span></div>
     <div class="aboutGrid">
       <div class="aboutCard"><h3>このサイトについて</h3><p>「パワプロ　作成キャラ管理ツール」は、パワプロで作成するキャラクターの名簿や育成状況を整理・管理するための非公式Webツールです。キャラクターの登録、作成モード・星・ポジション・栄冠ナインの記録、画像、タグなどをまとめて管理できます。</p></div>
-      <div class="aboutCard"><h3>主な機能</h3><p>キャラクターの個別登録・一括追加、作成状況の管理、プロ選手一覧・卒業生名簿、お気に入り、タグ・ソート設定（作品内グループ順を含む）、画像設定（表示位置・倍率の個別調整を含む）、JSONによるバックアップと復元などをご利用いただけます。</p></div>
+      <div class="aboutCard"><h3>主な機能</h3><p>キャラクターの個別登録・一括追加、作成状況の管理、プロ選手一覧・卒業生名簿、お気に入り、タグ・ソート設定（学校名管理・作品内グループ順を含む）、画像設定（表示位置・倍率の個別調整を含む）、JSONによるバックアップと復元などをご利用いただけます。</p></div>
       <div class="aboutCard"><h3>データの保存について</h3><p>登録したキャラクター情報や育成データは、ログインしない場合はご利用中のブラウザ内に保存されます。「Googleアカウント・同期」からログインして同期を有効にすると、同じGoogleアカウントを使う別端末でもクラウドデータを読み込めます。</p></div>
       <div class="aboutCard"><h3>バックアップについて</h3><p>ブラウザのサイトデータを削除した場合などに備えて、「データ削除・保存・復元」からJSONバックアップを作成できます。別の端末へデータを移す場合にも、JSONの書き出し・読み込みをご利用ください。</p></div>
       <div class="aboutCard"><h3>プライバシーについて</h3><p>登録したキャラクター情報、育成データ、アップロード画像などは、通常はご利用中のブラウザ内に保存されます。Googleアカウント同期を有効にした場合は、Firebase Authenticationでログインを行い、同期対象データをGoogle Cloud Firestoreへ保存します。クラウドデータはログインしたGoogleアカウントの認証UIDに紐づけて管理します。JSONバックアップとして書き出したデータは、利用者ご自身で管理してください。本サイトでは、利用状況の把握やサービス改善のためGoogle Analyticsを利用しており、ページの閲覧状況、利用端末・ブラウザ等のアクセス解析情報に加え、キャラ追加・バックアップ・Googleログイン・クラウド同期など一部機能の利用状況がGoogleへ送信されることがあります。これらの操作イベントには、キャラクター名、Googleアカウント名、メールアドレス、登録内容そのものは含めません。</p></div>
@@ -3627,6 +3707,9 @@ document.addEventListener('click', async e=>{
   if(action==='add-manual-tag'){ openTagAddModal(id || null); return; }
   if(action==='add-manual-tag-master'){ openTagAddModal(null); return; }
   if(action==='remove-tag-master'){ const v=t.dataset.value; removeManualTagValue(v); renderCurrent(); return; }
+  if(action==='add-school-master'){ const name=addSchool(); if(name){ markDataChanged(); renderCurrent(); } return; }
+  if(action==='remove-school-master'){ requestSchoolDelete(t.dataset.value); return; }
+  if(action==='confirm-school-delete'){ deleteSchoolValue(t.dataset.value); return; }
   if(action==='run-data-integrity-check'){ trackEvent('data_integrity_check'); runDataIntegrityCheck(); return; }
   if(action==='request-data-delete'){ requestDataDelete(t.dataset.deleteType); return; }
   if(action==='confirm-data-delete'){ performDataDelete(pendingDeleteType); pendingDeleteType=null; return; }
@@ -3808,6 +3891,15 @@ document.addEventListener('change', async e=>{
   }
   if(id && t.dataset.action && (['enrollmentYear','reenrollYear','stars'].includes(t.dataset.action) || t.dataset.action.startsWith('eikanYear:'))){ updateCreation(id,t.dataset.action,t.value,true); return; }
   if(id && t.dataset.action==='imageUrl'){ updateCharacterField(id,'imageUrl',t.value); rerenderCard(id); return; }
+  if(t.dataset.action==='edit-school-master'){
+    const i=Number(t.dataset.index);
+    const old=state.settings.schools?.[i];
+    const val=String(t.value||'').trim();
+    if(old===undefined) return;
+    if(!val){ toast('学校名は空欄にできません。削除する場合は右の×を使用してください'); renderCurrent(); return; }
+    if(val!==old){ renameSchoolValue(old,val); renderCurrent(); }
+    return;
+  }
   if(t.dataset.action==='image-manage-upload'){
     const charId=t.dataset.characterId;
     const file=t.files?.[0]; if(!charId || !file) return;
@@ -3928,6 +4020,7 @@ function moveByInsertIndex(kind, payload, insertIndex){
   if(kind==='groupPriority') setGroupPriorityOrder(payload.work, fromIndex, toIndex);
   if(kind==='debut') setDebutOrder(payload.work, fromIndex, toIndex);
   if(kind==='dashboardKpi') setDashboardKpiOrder(fromIndex, toIndex);
+  if(kind==='school') setSchoolOrder(fromIndex, toIndex);
 }
 
 document.addEventListener('dragstart', e=>{
