@@ -346,7 +346,7 @@ body.compactMode .favoriteBtn{width:32px;height:32px;font-size:18px}
 <div class="app">
   <aside class="sidebar">
     <div class="logo">パワプロ　作成キャラ管理ツール</div>
-    <div class="sub">キャラクター作成・名簿管理ツール / v4.15</div>
+    <div class="sub">キャラクター作成・名簿管理ツール / v4.16</div>
     <div class="nav">
       <button class="active" data-view="all">全キャラ</button>
       <button data-view="available">作成可能</button>
@@ -365,7 +365,7 @@ body.compactMode .favoriteBtn{width:32px;height:32px;font-size:18px}
       <button data-view="contact">お問い合わせ・不具合報告</button>
     </div>
     <div class="sidebox">
-      <b>完全版 v4.15</b><br>
+      <b>完全版 v4.16</b><br>
       キャラクターの登録・育成情報の管理・バックアップなどを、左メニューからご利用いただけます。
     </div>
   </aside>
@@ -393,7 +393,7 @@ body.compactMode .favoriteBtn{width:32px;height:32px;font-size:18px}
 <div id="modalRoot"></div>
 <div id="toast" class="toast"></div>
 <script>
-const DATA_VERSION = '4.15';
+const DATA_VERSION = '4.16';
 const CONTACT_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSepH-ZdScbl_HDJ3wXhfumMIaoATbIpUcVVgwpb831sFx24tw/viewform';
 const ANALYTICS_VIEW_NAMES = {
   all:'all_characters', available:'available', pro:'pro_players', graduates:'graduates', favorites:'favorites',
@@ -1824,7 +1824,7 @@ function renderDashboard(){
   const st=listState(); const base=baseFiltered();
   const createdNotPro = base.filter(c=>isCreated(creationFrom(st,c)) && allTagsFrom(st,c).includes('未プロ'));
   const favUncreated = base.filter(c=>creationFrom(st,c).favorite && !isCreated(creationFrom(st,c)));
-  $('#view').innerHTML = `<div class="hero"><div class="heroHead"><div><h1>パワプロ　作成キャラ管理ツール v4.15</h1><p>パワプロで作成したキャラクターを、作品・育成モード・星・ポジション・栄冠ナインの記録などとあわせて管理できます。</p></div><div class="heroActions"><button class="btn" id="openDashboardKpis">表示カード設定</button></div></div></div>${kpis()}<section class="section"><div class="sectionHead"><h2>作成済み未プロ</h2><span class="note">作成済みで、まだプロ入りしていないキャラクターを表示します。</span></div>${renderCardsSmart(createdNotPro.slice(0,12),'該当するキャラクターはありません。')}</section><section class="section"><div class="sectionHead"><h2>お気に入り未作成</h2><span class="note">お気に入りに登録されていて、まだ作成していないキャラクターを表示します。</span></div>${renderCardsSmart(favUncreated.slice(0,12),'該当するキャラクターはありません。')}</section>`;
+  $('#view').innerHTML = `<div class="hero"><div class="heroHead"><div><h1>パワプロ　作成キャラ管理ツール v4.16</h1><p>パワプロで作成したキャラクターを、作品・育成モード・星・ポジション・栄冠ナインの記録などとあわせて管理できます。</p></div><div class="heroActions"><button class="btn" id="openDashboardKpis">表示カード設定</button></div></div></div>${kpis()}<section class="section"><div class="sectionHead"><h2>作成済み未プロ</h2><span class="note">作成済みで、まだプロ入りしていないキャラクターを表示します。</span></div>${renderCardsSmart(createdNotPro.slice(0,12),'該当するキャラクターはありません。')}</section><section class="section"><div class="sectionHead"><h2>お気に入り未作成</h2><span class="note">お気に入りに登録されていて、まだ作成していないキャラクターを表示します。</span></div>${renderCardsSmart(favUncreated.slice(0,12),'該当するキャラクターはありません。')}</section>`;
 }
 function renderAll(){ const st=listState(); const base=baseFiltered(); $('#view').innerHTML=`<section class="section"><div class="sectionHead"><h2>全キャラ</h2><span class="note">${base.length}件</span></div>${renderCardsSmart(base)}</section>`; }
 function renderAvailable(){
@@ -3292,7 +3292,7 @@ function filterData(st=listState()){
   const schools = graduateSchoolOptions(st).map(x=>encodeCriterion('school',x));
   const yearSet=new Set();
   st.characters.forEach(c=>allTagsFrom(st,c).forEach(t=>{ if(/^\d{4}年$/.test(t)) yearSet.add(t); }));
-  const years=[...yearSet].sort((a,b)=>Number(a)-Number(b)).map(y=>encodeCriterion('year',y));
+  const years=[...yearSet].sort((a,b)=>parseInt(a,10)-parseInt(b,10)).map(y=>encodeCriterion('year',y));
   const posTokens=['野手',...POSITIONS].map(p=>encodeCriterion('position',p));
   const pitchingRoleTokens=PITCHING_ROLES.map(p=>encodeCriterion('pitchingRole',p));
   const starTokens=['⭐0',...STAR_BUCKETS.map(b=>b.label)].map(s=>encodeCriterion('star',s));
