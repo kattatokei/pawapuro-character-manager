@@ -112,6 +112,7 @@ h2{font-size:21px;margin:0}
 .tag{font-size:11px;border-radius:999px;padding:4px 8px;background:var(--chip);color:#314d68}
 .tag.pro{background:var(--green-weak);color:#1e6d3b}
 .tag.no{background:var(--yellow-weak);color:#7c550b}
+.tag.enrolled{background:#e4f1ff;color:#245b8f}
 .tag.blank{background:#eee;color:#666}
 .tag.manual{background:#f0e9ff;color:#5c368f}
 .tag.star{background:#fff0d7;color:#8a4e00}
@@ -183,6 +184,7 @@ h2{font-size:21px;margin:0}
 .pillBtn.selected{background:var(--accent);border-color:var(--accent);color:#fff}
 .pillBtn.proSel{background:var(--green);border-color:var(--green);color:#fff}
 .pillBtn.noSel{background:#e8a83b;border-color:#e8a83b;color:#fff}
+.pillBtn.enrolledSel{background:#5f91c7;border-color:#5f91c7;color:#fff}
 .pillBtn.add{background:#fff9e8;border-color:#ead3a5;color:#7b550e;font-weight:800}
 .pillBtn.reSel{background:#d65a83;border-color:#d65a83;color:#fff}
 .memo{min-height:56px;resize:vertical;width:100%}
@@ -344,7 +346,7 @@ body.compactMode .favoriteBtn{width:32px;height:32px;font-size:18px}
 <div class="app">
   <aside class="sidebar">
     <div class="logo">パワプロ　作成キャラ管理ツール</div>
-    <div class="sub">キャラクター作成・名簿管理ツール / v4.14</div>
+    <div class="sub">キャラクター作成・名簿管理ツール / v4.15</div>
     <div class="nav">
       <button class="active" data-view="all">全キャラ</button>
       <button data-view="available">作成可能</button>
@@ -363,7 +365,7 @@ body.compactMode .favoriteBtn{width:32px;height:32px;font-size:18px}
       <button data-view="contact">お問い合わせ・不具合報告</button>
     </div>
     <div class="sidebox">
-      <b>完全版 v4.14</b><br>
+      <b>完全版 v4.15</b><br>
       キャラクターの登録・育成情報の管理・バックアップなどを、左メニューからご利用いただけます。
     </div>
   </aside>
@@ -391,7 +393,7 @@ body.compactMode .favoriteBtn{width:32px;height:32px;font-size:18px}
 <div id="modalRoot"></div>
 <div id="toast" class="toast"></div>
 <script>
-const DATA_VERSION = '4.14';
+const DATA_VERSION = '4.15';
 const CONTACT_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSepH-ZdScbl_HDJ3wXhfumMIaoATbIpUcVVgwpb831sFx24tw/viewform';
 const ANALYTICS_VIEW_NAMES = {
   all:'all_characters', available:'available', pro:'pro_players', graduates:'graduates', favorites:'favorites',
@@ -966,7 +968,8 @@ function clampYearValue(value){
   return Number.isFinite(n) ? Math.max(1930,Math.min(2100,Math.floor(n||2026))) : '';
 }
 function makeEikanRecord(type='通常入学', school='', enrollmentYear='', proStatus='未プロ'){
-  return {type, school: String(school||''), enrollmentYear: clampYearValue(enrollmentYear), proStatus: proStatus==='プロ' ? 'プロ' : '未プロ'};
+  const status=['在学中','未プロ','プロ'].includes(proStatus) ? proStatus : '未プロ';
+  return {type, school: String(school||''), enrollmentYear: clampYearValue(enrollmentYear), proStatus: status};
 }
 function normalizeEikanRecords(cr){
   let records=[];
@@ -977,7 +980,7 @@ function normalizeEikanRecords(cr){
     if(hasFirst) records.push(makeEikanRecord('通常入学', cr.school, cr.enrollmentYear, cr.proStatus));
     if(cr.reenroll) records.push(makeEikanRecord('再入学', cr.reenrollSchool, cr.reenrollYear, cr.reenrollProStatus));
   }
-  if(cr.mode==='栄冠ナイン' && !records.length) records.push(makeEikanRecord('通常入学','',2026,'未プロ'));
+  if(cr.mode==='栄冠ナイン' && !records.length) records.push(makeEikanRecord('通常入学','',2026,'在学中'));
   if(records.length){
     records[0].type='通常入学';
     for(let i=1;i<records.length;i++) records[i].type='再入学';
@@ -1003,7 +1006,9 @@ function eikanRecordsOf(cr){
   return cr.eikanRecords;
 }
 function finalEikanRecord(cr){ const rs=eikanRecordsOf(cr); return rs.length ? rs[rs.length-1] : null; }
-function canAddReenroll(cr){ return cr && cr.mode==='栄冠ナイン' && !isPro(cr); }
+function finalEikanStatus(cr){ const last=finalEikanRecord(cr); return last && ['在学中','未プロ','プロ'].includes(last.proStatus) ? last.proStatus : '未プロ'; }
+function isEnrolled(cr){ return !!cr && cr.mode==='栄冠ナイン' && finalEikanStatus(cr)==='在学中'; }
+function canAddReenroll(cr){ return cr && cr.mode==='栄冠ナイン' && finalEikanStatus(cr)==='未プロ'; }
 function pitchingRolesOf(cr){
   if(Array.isArray(cr.pitchingRoles)) return cr.pitchingRoles.filter(p=>PITCHING_ROLES.includes(p));
   return (typeof cr.pitchingRole==='string' && PITCHING_ROLES.includes(cr.pitchingRole)) ? [cr.pitchingRole] : [];
@@ -1314,7 +1319,7 @@ function autoTagsFrom(st,c){
         if(r.school) tags.push(r.school);
         if(r.enrollmentYear) tags.push(`${r.enrollmentYear}年`);
       });
-      tags.push(isPro(cr) ? 'プロ' : '未プロ');
+      tags.push(finalEikanStatus(cr));
     }else{
       tags.push('プロ');
     }
@@ -1573,7 +1578,7 @@ function renderCardsSmart(list, empty='該当するキャラクターはあり�
 }
 function smallThumb(c){ const current=characterById(c.id)||c; const src=imgSrc(current); return `<div class="smallThumb">${src?characterImageHtml(current,current.name):'画像なし'}</div>`; }
 function thumb(c){ const current=characterById(c.id)||c; const src=imgSrc(current); return `<div class="thumb">${src?characterImageHtml(current,current.name):'画像なし'}</div>`; }
-function tagClass(t){ if(t==='プロ') return 'pro'; if(t==='未プロ') return 'no'; if(t==='未作成'||t==='ポジションなし') return 'blank'; if(t==='野手'||['先発','中継ぎ','抑え'].includes(t)) return 'position'; if(t.startsWith('⭐')) return 'star'; if(t==='お気に入り') return 'favorite'; if(t==='再入学') return 're'; return ''; }
+function tagClass(t){ if(t==='プロ') return 'pro'; if(t==='在学中') return 'enrolled'; if(t==='未プロ') return 'no'; if(t==='未作成'||t==='ポジションなし') return 'blank'; if(t==='野手'||['先発','中継ぎ','抑え'].includes(t)) return 'position'; if(t.startsWith('⭐')) return 'star'; if(t==='お気に入り') return 'favorite'; if(t==='再入学') return 're'; return ''; }
 function manualTagsInPriority(tags, st=state){
   const values=[...new Set((tags||[]).map(String).filter(Boolean))];
   const priority=(st.settings?.manualTags||[]);
@@ -1589,8 +1594,8 @@ function makeChoice({id,value,options,placeholder='未選択',addLabel='',onAddK
   const display = value ? escapeHtml(value) : `<span style="color:#888">${escapeHtml(placeholder)}</span>`;
   return `<div class="choice" data-choice="${id}"><button class="choiceBtn" data-action="toggle-choice">${display}</button><div class="choiceMenu"><button data-action="choose" data-choice-id="${id}" data-value="">${escapeHtml(placeholder)}</button>${options.map(o=>`<button data-action="choose" data-choice-id="${id}" data-value="${escapeHtml(o)}" class="${o===value?'selected':''}">${escapeHtml(o)}</button>`).join('')}${addLabel?`<button class="addChoice" data-action="add-choice" data-choice-id="${id}" data-add-key="${onAddKey}">${escapeHtml(addLabel)}</button>`:''}</div></div>`;
 }
-function proButtons(cr, key='proStatus'){ const val=cr[key] || '未プロ'; return `<div class="seg"><button class="pillBtn ${val!=='プロ'?'selected noSel':''}" data-action="set-prostatus" data-pro-key="${key}" data-value="未プロ">未プロ</button><button class="pillBtn ${val==='プロ'?'selected proSel':''}" data-action="set-prostatus" data-pro-key="${key}" data-value="プロ">プロ</button></div>`; }
-function recordProButtons(index, value='未プロ'){ const val=value==='プロ'?'プロ':'未プロ'; return `<div class="seg"><button class="pillBtn ${val!=='プロ'?'selected noSel':''}" data-action="set-eikan-record-pro" data-record-index="${index}" data-value="未プロ">未プロ</button><button class="pillBtn ${val==='プロ'?'selected proSel':''}" data-action="set-eikan-record-pro" data-record-index="${index}" data-value="プロ">プロ</button></div>`; }
+function proButtons(cr, key='proStatus'){ const val=['在学中','未プロ','プロ'].includes(cr[key]) ? cr[key] : '未プロ'; return `<div class="seg"><button class="pillBtn ${val==='在学中'?'selected enrolledSel':''}" data-action="set-prostatus" data-pro-key="${key}" data-value="在学中">在学中</button><button class="pillBtn ${val==='未プロ'?'selected noSel':''}" data-action="set-prostatus" data-pro-key="${key}" data-value="未プロ">未プロ</button><button class="pillBtn ${val==='プロ'?'selected proSel':''}" data-action="set-prostatus" data-pro-key="${key}" data-value="プロ">プロ</button></div>`; }
+function recordProButtons(index, value='未プロ'){ const val=['在学中','未プロ','プロ'].includes(value) ? value : '未プロ'; return `<div class="seg"><button class="pillBtn ${val==='在学中'?'selected enrolledSel':''}" data-action="set-eikan-record-pro" data-record-index="${index}" data-value="在学中">在学中</button><button class="pillBtn ${val==='未プロ'?'selected noSel':''}" data-action="set-eikan-record-pro" data-record-index="${index}" data-value="未プロ">未プロ</button><button class="pillBtn ${val==='プロ'?'selected proSel':''}" data-action="set-eikan-record-pro" data-record-index="${index}" data-value="プロ">プロ</button></div>`; }
 function multiButtons(values, selected, action, add=false){ selected = selected || []; return `<div class="seg">${values.map(v=>`<button class="pillBtn ${selected.includes(v)?'selected':''}" data-action="${action}" data-value="${escapeHtml(v)}">${escapeHtml(v)}</button>`).join('')}${add?`<button class="pillBtn add" data-action="add-manual-tag">＋タグ追加</button>`:''}</div>`; }
 function eikanRecordsUi(cr){
   if(cr.mode!=='栄冠ナイン') return '';
@@ -1600,10 +1605,10 @@ function eikanRecordsUi(cr){
     const remove = i>0 ? `<button class="btn danger small" data-action="remove-reenroll-record" data-record-index="${i}">削除</button>` : '';
     return `<div class="eikanRecord ${i>0?'re':''}"><div class="recordHead"><div class="recordTitle">${escapeHtml(title)}</div>${remove}</div>
       <div class="row2"><div class="field"><div class="label">学校名</div>${makeChoice({id:`eikanSchool:${i}`,value:r.school,options:state.settings.schools,placeholder:'学校未設定',addLabel:'＋学校追加',onAddKey:'school'})}</div><div class="field"><div class="label">入学年度</div><input type="number" min="1930" max="2100" value="${escapeHtml(r.enrollmentYear)}" data-action="eikanYear:${i}" placeholder="2026"></div></div>
-      <div class="field"><div class="label">プロ状況</div>${recordProButtons(i,r.proStatus)}</div>
+      <div class="field"><div class="label">在籍・進路状況</div>${recordProButtons(i,r.proStatus)}</div>
     </div>`;
   }).join('');
-  const add = canAddReenroll(cr) ? `<div class="field"><div class="label">再入学</div><button class="pillBtn add reSel" data-action="add-reenroll-record">＋再入学を追加</button><div class="hint">最終状態が未プロである間は、何度でも再入学の記録を追加できます。</div></div>` : '';
+  const add = canAddReenroll(cr) ? `<div class="field"><div class="label">再入学</div><button class="pillBtn add reSel" data-action="add-reenroll-record">＋再入学を追加</button><div class="hint">最終状態が未プロのときだけ、再入学の記録を追加できます。在学中・プロの場合は追加できません。</div></div>` : '';
   return `${rows}${add}`;
 }
 function card(c){
@@ -1709,7 +1714,7 @@ function allMenuKpis(st=listState()){
   const total=st.characters.length;
   const pro=st.characters.filter(c=>isPro(creationFrom(st,c))).length;
   const available=st.characters.filter(c=>{ const tags=allTagsFrom(st,c); return tags.includes('未プロ') || tags.includes('未作成'); }).length;
-  const eikanNotPro=st.characters.filter(c=>{ const cr=creationFrom(st,c); return cr.mode==='栄冠ナイン' && !isPro(cr); }).length;
+  const eikanNotPro=st.characters.filter(c=>{ const cr=creationFrom(st,c); return cr.mode==='栄冠ナイン' && finalEikanStatus(cr)==='未プロ'; }).length;
   return fixedKpis([
     {label:'登録キャラ', value:total, desc:'名簿にいる全キャラ'},
     {label:'プロ入り選手', value:pro, desc:'プロタグを持つキャラ'},
@@ -1770,7 +1775,8 @@ function dashboardMetricStats(st=listState()){
   const createdStars=chars.map(c=>visibleStar(creationFrom(st,c))).filter(n=>n>0);
   const maxStar=createdStars.length ? Math.max(...createdStars) : 0;
   const avgStar=createdStars.length ? Math.round(createdStars.reduce((a,b)=>a+b,0)/createdStars.length) : 0;
-  return {total,created,uncreated,available,pro,notPro:total-pro,createdNotPro,favorite,favUncreated,eikan,success,powerfes,legend,reenroll,imageReady,maxStar,avgStar};
+  const notPro=chars.filter(c=>{ const tags=allTagsFrom(st,c); return tags.includes('未プロ') || tags.includes('未作成'); }).length;
+  return {total,created,uncreated,available,pro,notPro,createdNotPro,favorite,favUncreated,eikan,success,powerfes,legend,reenroll,imageReady,maxStar,avgStar};
 }
 function dashboardKpiKeys(st=listState()){
   const valid=new Set(dashboardMetricDefs().map(m=>m.key));
@@ -1818,7 +1824,7 @@ function renderDashboard(){
   const st=listState(); const base=baseFiltered();
   const createdNotPro = base.filter(c=>isCreated(creationFrom(st,c)) && allTagsFrom(st,c).includes('未プロ'));
   const favUncreated = base.filter(c=>creationFrom(st,c).favorite && !isCreated(creationFrom(st,c)));
-  $('#view').innerHTML = `<div class="hero"><div class="heroHead"><div><h1>パワプロ　作成キャラ管理ツール v4.14</h1><p>パワプロで作成したキャラクターを、作品・育成モード・星・ポジション・栄冠ナインの記録などとあわせて管理できます。</p></div><div class="heroActions"><button class="btn" id="openDashboardKpis">表示カード設定</button></div></div></div>${kpis()}<section class="section"><div class="sectionHead"><h2>作成済み未プロ</h2><span class="note">作成済みで、まだプロ入りしていないキャラクターを表示します。</span></div>${renderCardsSmart(createdNotPro.slice(0,12),'該当するキャラクターはありません。')}</section><section class="section"><div class="sectionHead"><h2>お気に入り未作成</h2><span class="note">お気に入りに登録されていて、まだ作成していないキャラクターを表示します。</span></div>${renderCardsSmart(favUncreated.slice(0,12),'該当するキャラクターはありません。')}</section>`;
+  $('#view').innerHTML = `<div class="hero"><div class="heroHead"><div><h1>パワプロ　作成キャラ管理ツール v4.15</h1><p>パワプロで作成したキャラクターを、作品・育成モード・星・ポジション・栄冠ナインの記録などとあわせて管理できます。</p></div><div class="heroActions"><button class="btn" id="openDashboardKpis">表示カード設定</button></div></div></div>${kpis()}<section class="section"><div class="sectionHead"><h2>作成済み未プロ</h2><span class="note">作成済みで、まだプロ入りしていないキャラクターを表示します。</span></div>${renderCardsSmart(createdNotPro.slice(0,12),'該当するキャラクターはありません。')}</section><section class="section"><div class="sectionHead"><h2>お気に入り未作成</h2><span class="note">お気に入りに登録されていて、まだ作成していないキャラクターを表示します。</span></div>${renderCardsSmart(favUncreated.slice(0,12),'該当するキャラクターはありません。')}</section>`;
 }
 function renderAll(){ const st=listState(); const base=baseFiltered(); $('#view').innerHTML=`<section class="section"><div class="sectionHead"><h2>全キャラ</h2><span class="note">${base.length}件</span></div>${renderCardsSmart(base)}</section>`; }
 function renderAvailable(){
@@ -1859,13 +1865,16 @@ function graduateEntriesForSchool(school, st=listState()){
     if(cr.mode!=='栄冠ナイン') return;
     const records=eikanRecordsOf(cr);
     records.forEach((r,i)=>{
-      if(r.school===school && r.enrollmentYear){
+      const isFinalRecord=i===records.length-1;
+      const isCurrentStudent=isFinalRecord && r.proStatus==='在学中';
+      if(r.school===school && (r.enrollmentYear || isCurrentStudent)){
         rows.push({
-          year:Number(r.enrollmentYear),
+          year:r.enrollmentYear ? Number(r.enrollmentYear) : null,
           character:c,
           record:r,
           recordIndex:i,
-          isFinalRecord:i===records.length-1,
+          isFinalRecord,
+          isCurrentStudent,
           label:i===0?'通常入学':`再入学（${i+1}回目）`
         });
       }
@@ -1878,7 +1887,10 @@ function graduateEntriesForSchool(school, st=listState()){
   const pref=viewPref('graduates');
   const compareCharacters=characterComparator(st,pref);
   return rows.sort((a,b)=>{
-    const yearCmp=a.year-b.year;
+    if(!!a.isCurrentStudent!==!!b.isCurrentStudent) return a.isCurrentStudent ? 1 : -1;
+    const ay=Number.isFinite(a.year)?a.year:Number.MAX_SAFE_INTEGER;
+    const by=Number.isFinite(b.year)?b.year:Number.MAX_SAFE_INTEGER;
+    const yearCmp=ay-by;
     if(yearCmp) return yearCmp;
     return compareCharacters(a.character,b.character);
   });
@@ -1892,7 +1904,7 @@ function graduateTagsHtml(row){
   if(row.recordIndex>0) tags.push('再入学');
   if(row.record?.school) tags.push(row.record.school);
   if(row.record?.enrollmentYear) tags.push(`${row.record.enrollmentYear}年`);
-  tags.push(row.isFinalRecord && isPro(cr) ? 'プロ' : '未プロ');
+  tags.push(['在学中','未プロ','プロ'].includes(row.record?.proStatus) ? row.record.proStatus : (row.isFinalRecord && isPro(cr) ? 'プロ' : '未プロ'));
   if(row.isFinalRecord){
     const facts=getPositionFacts(cr);
     if(!facts.hasNoPosition){
@@ -1915,12 +1927,13 @@ function graduateCard(row){
   const star=row.isFinalRecord ? visibleStar(cr) : 0;
   const position=row.isFinalRecord ? positionSummary(cr) : 'ポジションなし';
   const pro=row.isFinalRecord && isPro(cr);
+  const recordNote = row.isCurrentStudent ? `${row.label}・${row.year ? row.year+'年入学' : '入学年度未設定'}` : row.label;
   return `<article class="card created ${pro?'pro':''}" data-id="${escapeHtml(current.id)}">
     <button class="favoriteBtn ${cr.favorite?'selected':''}" title="お気に入り" data-action="toggle-favorite">★</button>
     ${thumb(current)}
     <div class="name">${escapeHtml(current.name)}</div>
     <div class="workName">${escapeHtml(workDisplay(current))}</div>
-    <div class="note">${escapeHtml(row.label)}</div>
+    <div class="note">${escapeHtml(recordNote)}</div>
     <div class="cardSummary">${starSummaryHtml(cr, star)}${positionSummaryHtml(cr, position)}</div>
     <div class="tags">${graduateTagsHtml(row)}</div>
   </article>`;
@@ -1932,15 +1945,20 @@ function renderGraduates(){
   const st=listState();
   const schools=graduateSchoolOptions(st);
   if(!selectedGraduateSchool || !schools.includes(selectedGraduateSchool)) selectedGraduateSchool=schools[0] || '';
-  let html=`<section class="section"><div class="sectionHead"><h2>卒業生名簿</h2><span class="note">学校を選択すると、その学校に所属する栄冠ナインの選手を入学年度ごとに表示します。</span></div>`;
-  html+=`<div class="detailPanel"><div class="label">学校選択</div><div class="schoolPicker">${schools.map(s=>`<button class="pillBtn ${s===selectedGraduateSchool?'selected':''}" data-action="set-graduate-school" data-value="${escapeHtml(s)}">${escapeHtml(s)}</button>`).join('') || '<span class="note">登録されている学校はありません。</span>'}</div><p class="hint">入学年度が古い順に表示します。再入学の記録が複数ある場合、最終入学年度以外の記録は「星0・ポジションなし」として表示されます。</p></div>`;
+  let html=`<section class="section"><div class="sectionHead"><h2>卒業生名簿</h2><span class="note">学校を選択すると、その学校に所属する栄冠ナインの選手を入学年度ごとに表示し、現在在学中の選手は名簿の一番下にまとめて表示します。</span></div>`;
+  html+=`<div class="detailPanel"><div class="label">学校選択</div><div class="schoolPicker">${schools.map(s=>`<button class="pillBtn ${s===selectedGraduateSchool?'selected':''}" data-action="set-graduate-school" data-value="${escapeHtml(s)}">${escapeHtml(s)}</button>`).join('') || '<span class="note">登録されている学校はありません。</span>'}</div><p class="hint">卒業済みの記録は入学年度が古い順に表示し、現在在学中の選手は一番下の「在学中」に表示します。再入学の記録が複数ある場合、最終入学年度以外の記録は「星0・ポジションなし」として表示されます。</p></div>`;
   const rows=selectedGraduateSchool ? graduateEntriesForSchool(selectedGraduateSchool, st) : [];
-  const years=[...new Set(rows.map(r=>r.year))].sort((a,b)=>a-b);
-  if(!years.length) html+=`<div class="empty">この学校の卒業生名簿に表示できるキャラクターはありません。</div>`;
+  const currentStudents=rows.filter(r=>r.isCurrentStudent);
+  const graduates=rows.filter(r=>!r.isCurrentStudent);
+  const years=[...new Set(graduates.map(r=>r.year).filter(y=>Number.isFinite(y)))].sort((a,b)=>a-b);
+  if(!years.length && !currentStudents.length) html+=`<div class="empty">この学校の名簿に表示できるキャラクターはありません。</div>`;
   years.forEach(y=>{
-    const list=rows.filter(r=>r.year===y);
+    const list=graduates.filter(r=>r.year===y);
     html+=`<div class="yearBlock"><div class="sectionHead"><h2>${escapeHtml(y)}年</h2><span class="note">${list.length}人</span></div>${renderGraduateCards(list)}</div>`;
   });
+  if(currentStudents.length){
+    html+=`<div class="yearBlock"><div class="sectionHead"><h2>在学中</h2><span class="note">${currentStudents.length}人</span></div>${renderGraduateCards(currentStudents)}</div>`;
+  }
   $('#view').innerHTML=html+`</section>`;
 }
 function priorityItemsFor(type, st=listState()){
@@ -2577,8 +2595,9 @@ function runDataIntegrityCheck(){
       if(r?.type!==expected) issues.push(dataIntegrityIssue('warning','栄冠記録',`${c.name||id} の${i+1}件目の種別が不整合です`,`現在: ${r?.type||'空'} / 想定: ${expected}`));
       const y=r?.enrollmentYear;
       if(y!=='' && y!==null && y!==undefined && (!Number.isFinite(Number(y)) || Number(y)<1930 || Number(y)>2100)) issues.push(dataIntegrityIssue('error','栄冠記録',`${c.name||id} の入学年度が範囲外です`,String(y)));
-      if(r?.proStatus!=='プロ' && r?.proStatus!=='未プロ') issues.push(dataIntegrityIssue('error','栄冠記録',`${c.name||id} のプロ状況が不正です`,String(r?.proStatus||'')));
+      if(!['在学中','未プロ','プロ'].includes(r?.proStatus)) issues.push(dataIntegrityIssue('error','栄冠記録',`${c.name||id} の在籍・進路状況が不正です`,String(r?.proStatus||'')));
       if(i<records.length-1 && r?.proStatus==='プロ') issues.push(dataIntegrityIssue('error','栄冠記録',`${c.name||id} はプロ入り後に再入学記録があります`,`${i+1}件目でプロ入り後、さらに記録が続いています`));
+      if(i<records.length-1 && r?.proStatus==='在学中') issues.push(dataIntegrityIssue('error','栄冠記録',`${c.name||id} は在学中の記録の後に再入学記録があります`,`${i+1}件目が在学中のまま、さらに記録が続いています`));
     });
     if(Array.isArray(cr.manualTags)) cr.manualTags.forEach(tag=>{
       if(!Array.isArray(settings.manualTags) || !settings.manualTags.includes(tag)) issues.push(dataIntegrityIssue('warning','手動タグ',`${c.name||id} のタグ「${tag}」がタグ一覧にありません`,'タグマスターとの不整合です'));
@@ -3269,7 +3288,7 @@ function filterData(st=listState()){
   const worksTokens = workTags(st).map(w=>encodeCriterion('work',w));
   const groupTokens = groupTokensForSelectedWorks(st);
   const modeTokens = ['未作成',...MODES].map(m=>encodeCriterion('mode',m));
-  const statusTokens = ['未作成','作成済','未プロ','プロ','お気に入り','再入学'].map(x=>encodeCriterion('status',x));
+  const statusTokens = ['在学中','未作成','作成済','未プロ','プロ','お気に入り','再入学'].map(x=>encodeCriterion('status',x));
   const schools = graduateSchoolOptions(st).map(x=>encodeCriterion('school',x));
   const yearSet=new Set();
   st.characters.forEach(c=>allTagsFrom(st,c).forEach(t=>{ if(/^\d{4}年$/.test(t)) yearSet.add(t); }));
@@ -3386,7 +3405,7 @@ function updateCreation(id, key, value, rerender=true){
     }
     else {
       cr.eikanRecords=normalizeEikanRecords(cr);
-      if(!cr.eikanRecords.length) cr.eikanRecords=[makeEikanRecord('通常入学','',2026,'未プロ')];
+      if(!cr.eikanRecords.length) cr.eikanRecords=[makeEikanRecord('通常入学','',2026,'在学中')];
       if(!cr.eikanRecords[0].enrollmentYear) cr.eikanRecords[0].enrollmentYear=2026;
       syncLegacyEikanFields(cr);
     }
@@ -3397,7 +3416,7 @@ function updateCreation(id, key, value, rerender=true){
   }else if(key.startsWith('eikanYear:')){
     const i=Number(key.split(':')[1]); const records=eikanRecordsOf(cr); if(records[i]) records[i].enrollmentYear=clampYearValue(value); syncLegacyEikanFields(cr);
   }else if(key.startsWith('eikanPro:')){
-    const i=Number(key.split(':')[1]); const records=eikanRecordsOf(cr); if(records[i]) records[i].proStatus=value==='プロ'?'プロ':'未プロ'; syncLegacyEikanFields(cr);
+    const i=Number(key.split(':')[1]); const records=eikanRecordsOf(cr); if(records[i]) records[i].proStatus=['在学中','未プロ','プロ'].includes(value)?value:'未プロ'; syncLegacyEikanFields(cr);
   }else if(key==='enrollmentYear' || key==='reenrollYear'){
     const targetKey = key==='enrollmentYear' ? 'eikanYear:0' : 'eikanYear:1';
     updateCreation(id,targetKey,value,false);
@@ -3747,7 +3766,7 @@ document.addEventListener('click', async e=>{
     const cr=creation(characterById(id));
     if(canAddReenroll(cr)){
       if(!Array.isArray(cr.eikanRecords)) cr.eikanRecords=normalizeEikanRecords(cr);
-      cr.eikanRecords.push(makeEikanRecord('再入学','',2026,'未プロ'));
+      cr.eikanRecords.push(makeEikanRecord('再入学','',2026,'在学中'));
       syncLegacyEikanFields(cr);
       openEditors.add(id);
       saveDraft();
@@ -3760,7 +3779,7 @@ document.addEventListener('click', async e=>{
     const cr=creation(characterById(id));
     if(canAddReenroll(cr)){
       if(!Array.isArray(cr.eikanRecords)) cr.eikanRecords=normalizeEikanRecords(cr);
-      cr.eikanRecords.push(makeEikanRecord('再入学','',2026,'未プロ'));
+      cr.eikanRecords.push(makeEikanRecord('再入学','',2026,'在学中'));
       syncLegacyEikanFields(cr);
       openEditors.add(id);
       saveDraft();
